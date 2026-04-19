@@ -1,0 +1,47 @@
+{
+  "appName": {
+    "message": "Word Learn",
+    "description": "The extension name shown in Chrome."
+  },
+  "appDescription": {
+    "message": "Highlight & collect English words while you browse, organized by category and color.",
+    "description": "Extension description in the Chrome Web Store / extensions page."
+  },
+  "actionTitle": {
+    "message": "Word Learn"
+  },
+  "contextMenuCollect": {
+    "message": "Word Learn: collect \"%s\"",
+    "description": "Right-click menu label. %s is the selected text."
+  },
+  "contextMenuAddWord": {
+    "message": "Word Learn: add \"%s\" to highlight list",
+    "description": "Right-click menu label for adding selected text to the dictionary."
+  },
+
+  "popup_addWordPlaceholder": { "message": "Add a word…" },
+  "popup_addButton": { "message": "Add" },
+  "popup_wordsTracked": { "message": "$COUNT$ word(s) tracked", "placeholders": { "count": { "content": "$1", "example": "12" } } },
+  "popup_recentCollections": { "message": "Recent collections" },
+  "popup_emptyHint": { "message": "Select text on a page and press Alt+S, or right-click → Word Learn: collect." },
+  "popup_manageLink": { "message": "Manage categories & list →" },
+  "popup_on": { "message": "ON" },
+  "popup_off": { "message": "OFF" },
+
+  "options_title": { "message": "Word Learn" },
+  "options_tabWords": { "message": "Words" },
+  "options_tabCategories": { "message": "Categories" },
+  "options_tabCollections": { "message": "Collections" },
+  "options_export": { "message": "Export" },
+  "options_import": { "message": "Import" },
+  "options_addWord": { "message": "Add" },
+  "options_wordPlaceholder": { "message": "word or phrase" },
+  "options_categoryNamePlaceholder": { "message": "Category name" },
+  "options_delete": { "message": "Delete" },
+  "options_promote": { "message": "Add to highlight list" },
+  "options_noCollections": { "message": "No collections yet." },
+
+  "feedback_saved": { "message": "✓ saved" },
+  "feedback_wordAdded": { "message": "✓ added to highlight list" },
+  "feedback_wordExists": { "message": "already in highlight list" }
+}

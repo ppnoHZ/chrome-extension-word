@@ -1,0 +1,47 @@
+{
+  "appName": {
+    "message": "Word Learn 单词学习",
+    "description": "扩展名称，显示在 Chrome 中。"
+  },
+  "appDescription": {
+    "message": "在浏览网页时高亮并收藏英语单词，按类别用不同颜色展示。",
+    "description": "扩展描述，显示在 Chrome 网上应用店 / 扩展管理页。"
+  },
+  "actionTitle": {
+    "message": "Word Learn 单词学习"
+  },
+  "contextMenuCollect": {
+    "message": "Word Learn：收藏「%s」",
+    "description": "右键菜单标签。%s 为选中的文本。"
+  },
+  "contextMenuAddWord": {
+    "message": "Word Learn：将「%s」加入高亮列表",
+    "description": "将选中文本加入高亮字典。"
+  },
+
+  "popup_addWordPlaceholder": { "message": "添加一个单词…" },
+  "popup_addButton": { "message": "添加" },
+  "popup_wordsTracked": { "message": "已跟踪 $COUNT$ 个单词", "placeholders": { "count": { "content": "$1", "example": "12" } } },
+  "popup_recentCollections": { "message": "最近收藏" },
+  "popup_emptyHint": { "message": "在页面上选中文本后按 Alt+S，或右键 → Word Learn：收藏。" },
+  "popup_manageLink": { "message": "管理类别与列表 →" },
+  "popup_on": { "message": "开" },
+  "popup_off": { "message": "关" },
+
+  "options_title": { "message": "Word Learn 单词学习" },
+  "options_tabWords": { "message": "单词" },
+  "options_tabCategories": { "message": "类别" },
+  "options_tabCollections": { "message": "收藏" },
+  "options_export": { "message": "导出" },
+  "options_import": { "message": "导入" },
+  "options_addWord": { "message": "添加" },
+  "options_wordPlaceholder": { "message": "单词或短语" },
+  "options_categoryNamePlaceholder": { "message": "类别名称" },
+  "options_delete": { "message": "删除" },
+  "options_promote": { "message": "加入高亮列表" },
+  "options_noCollections": { "message": "暂无收藏。" },
+
+  "feedback_saved": { "message": "✓ 已保存" },
+  "feedback_wordAdded": { "message": "✓ 已加入高亮列表" },
+  "feedback_wordExists": { "message": "该单词已在高亮列表中" }
+}

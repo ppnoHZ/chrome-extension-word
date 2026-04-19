@@ -1,0 +1,16 @@
+/* Highlight styles injected into every frame.
+   All classes MUST be prefixed `wl-` to avoid clashing with host page styles. */
+
+.wl-hl {
+  background-color: var(--wl-color, #ffd54f);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  cursor: help;
+}
+
+.wl-hl:hover {
+  outline: 1px solid rgba(0, 0, 0, 0.2);
+}
