@@ -3,18 +3,22 @@ import { computed, onMounted, ref } from 'vue';
 import { getAll, set, update } from '@/shared/storage';
 import { send } from '@/shared/messaging';
 import { t } from '@/shared/i18n';
-import type { Category, Collection, Word } from '@/shared/types';
+import type { Category, Collection, Word, DictApiType } from '@/shared/types';
 
 const categories = ref<Category[]>([]);
 const words = ref<Word[]>([]);
 const collections = ref<Collection[]>([]);
-const tab = ref<'words' | 'categories' | 'collections'>('words');
+const tab = ref<'words' | 'categories' | 'collections' | 'settings'>('words');
 
 const newCatName = ref('');
 const newCatColor = ref('#90caf9');
 
 const newWordText = ref('');
 const newWordCat = ref('default');
+
+// 设置相关
+const dictApi = ref<DictApiType>('auto');
+const cacheCount = ref(0);
 
 onMounted(() => void reload());
 
@@ -23,6 +27,8 @@ async function reload() {
   categories.value = all.categories;
   words.value = all.words;
   collections.value = all.collections;
+  dictApi.value = all.dictApi || 'auto';
+  cacheCount.value = Object.keys(all.dictCache || {}).length;
   if (categories.value[0]) newWordCat.value = categories.value[0].id;
 }
 
@@ -138,6 +144,16 @@ async function importJson(ev: Event) {
   await reload();
   await send({ type: 'wordsUpdated' });
 }
+
+// 设置相关函数
+async function saveDictApi() {
+  await set('dictApi', dictApi.value);
+}
+
+async function clearDictCache() {
+  await set('dictCache', {});
+  cacheCount.value = 0;
+}
 </script>
 
 <template>
@@ -148,6 +164,7 @@ async function importJson(ev: Event) {
         <button :class="{ active: tab === 'words' }" @click="tab = 'words'">{{ t('options_tabWords') }} ({{ words.length }})</button>
         <button :class="{ active: tab === 'categories' }" @click="tab = 'categories'">{{ t('options_tabCategories') }} ({{ categories.length }})</button>
         <button :class="{ active: tab === 'collections' }" @click="tab = 'collections'">{{ t('options_tabCollections') }} ({{ collections.length }})</button>
+        <button :class="{ active: tab === 'settings' }" @click="tab = 'settings'">{{ t('options_tabSettings') }}</button>
       </nav>
       <div class="actions">
         <button @click="exportJson">{{ t('options_export') }}</button>
@@ -204,7 +221,7 @@ async function importJson(ev: Event) {
       </ul>
     </main>
 
-    <main v-else>
+    <main v-else-if="tab === 'collections'">
       <ul class="collection-list">
         <li v-for="c in collections" :key="c.id">
           <div class="text">{{ c.text }}</div>
@@ -221,6 +238,29 @@ async function importJson(ev: Event) {
         </li>
         <li v-if="!collections.length" class="empty">{{ t('options_noCollections') }}</li>
       </ul>
+    </main>
+
+    <main v-else-if="tab === 'settings'">
+      <section class="settings-section">
+        <h2>{{ t('settings_dictApi') }}</h2>
+        <p class="desc">{{ t('settings_dictApiDesc') }}</p>
+        <div class="setting-row">
+          <select v-model="dictApi" @change="saveDictApi">
+            <option value="auto">{{ t('settings_apiAuto') }}</option>
+            <option value="youdao">{{ t('settings_apiYoudao') }}</option>
+            <option value="iciba">{{ t('settings_apiIciba') }}</option>
+            <option value="freedict">{{ t('settings_apiFreeDictionary') }}</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h2>{{ t('settings_cache') }}</h2>
+        <p class="desc">{{ t('settings_cacheDesc', String(cacheCount)) }}</p>
+        <div class="setting-row">
+          <button @click="clearDictCache">{{ t('settings_clearCache') }}</button>
+        </div>
+      </section>
     </main>
   </div>
 </template>
@@ -258,4 +298,11 @@ nav button.active { background: #1565c0; color: #fff; border-color: #1565c0; }
 .collection-list .row button { padding: 2px 8px; cursor: pointer; }
 .collection-list .empty { text-align: center; opacity: 0.6; padding: 32px; }
 .del { background: #fff; border: 1px solid #c62828; color: #c62828; border-radius: 3px; cursor: pointer; padding: 0 6px; }
+.settings-section { background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 16px; margin-bottom: 16px; }
+.settings-section h2 { margin: 0 0 8px; font-size: 16px; }
+.settings-section .desc { margin: 0 0 12px; font-size: 13px; color: #666; }
+.setting-row { display: flex; gap: 8px; align-items: center; }
+.setting-row select { padding: 6px 10px; border-radius: 4px; border: 1px solid #ccc; min-width: 200px; }
+.setting-row button { padding: 6px 12px; border-radius: 4px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
+.setting-row button:hover { background: #f5f5f5; }
 </style>

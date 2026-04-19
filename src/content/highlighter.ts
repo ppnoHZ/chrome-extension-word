@@ -1,6 +1,6 @@
 import type { Category, Word } from '@/shared/types';
 
-const HL_CLASS = 'wl-hl';
+export const HL_CLASS = 'wl-hl';
 export const SKIP_TAGS = new Set([
   'SCRIPT',
   'STYLE',
@@ -66,6 +66,8 @@ export function highlight(root: Node = document.body): void {
       if (!parent) return NodeFilter.FILTER_REJECT;
       if (SKIP_TAGS.has(parent.tagName)) return NodeFilter.FILTER_REJECT;
       if (parent.closest(`.${HL_CLASS}`)) return NodeFilter.FILTER_REJECT;
+      // 排除释义卡片内的内容
+      if (parent.closest('.wl-def-card')) return NodeFilter.FILTER_REJECT;
       if (parent.isContentEditable) return NodeFilter.FILTER_REJECT;
       if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;

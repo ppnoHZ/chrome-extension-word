@@ -18,6 +18,10 @@
     "message": "Word Learn: add \"%s\" to highlight list",
     "description": "Right-click menu label for adding selected text to the dictionary."
   },
+  "contextMenuLookup": {
+    "message": "Word Learn: lookup \"%s\"",
+    "description": "Right-click menu label for looking up the definition of selected text."
+  },
 
   "popup_addWordPlaceholder": { "message": "Add a word…" },
   "popup_addButton": { "message": "Add" },
@@ -40,8 +44,35 @@
   "options_delete": { "message": "Delete" },
   "options_promote": { "message": "Add to highlight list" },
   "options_noCollections": { "message": "No collections yet." },
+  "options_tabSettings": { "message": "Settings" },
+
+  "settings_dictApi": { "message": "Dictionary API" },
+  "settings_dictApiDesc": { "message": "Choose which dictionary service to use for word definitions." },
+  "settings_apiAuto": { "message": "Auto (try multiple)" },
+  "settings_apiYoudao": { "message": "Youdao Translate (有道翻译)" },
+  "settings_apiIciba": { "message": "iCIBA (金山词霸)" },
+  "settings_apiFreeDictionary": { "message": "Free Dictionary (English only)" },
+  "settings_cache": { "message": "Dictionary Cache" },
+  "settings_cacheDesc": { "message": "$COUNT$ words cached. Clear cache to re-fetch definitions.", "placeholders": { "count": { "content": "$1" } } },
+  "settings_clearCache": { "message": "Clear Cache" },
+  "options_tabSettings": { "message": "Settings" },
+
+  "settings_dictApi": { "message": "Dictionary API" },
+  "settings_dictApiDesc": { "message": "Choose which dictionary service to use for word definitions." },
+  "settings_apiAuto": { "message": "Auto (try multiple)" },
+  "settings_apiYoudao": { "message": "Youdao Translate (有道翻译)" },
+  "settings_apiIciba": { "message": "iCIBA (金山词霸)" },
+  "settings_apiFreeDictionary": { "message": "Free Dictionary (English only)" },
+  "settings_cache": { "message": "Dictionary Cache" },
+  "settings_cacheDesc": { "message": "$COUNT$ words cached. Clear cache to re-fetch definitions.", "placeholders": { "count": { "content": "$1" } } },
+  "settings_clearCache": { "message": "Clear Cache" },
 
   "feedback_saved": { "message": "✓ saved" },
   "feedback_wordAdded": { "message": "✓ added to highlight list" },
-  "feedback_wordExists": { "message": "already in highlight list" }
+  "feedback_wordExists": { "message": "already in highlight list" },
+
+  "dict_loading": { "message": "Loading..." },
+  "dict_notFound": { "message": "Definition not found" },
+  "dict_error": { "message": "Failed to load definition" },
+  "dict_close": { "message": "Close" }
 }

@@ -1,6 +1,7 @@
 import { onMessage, type HighlightData } from '@/shared/messaging';
-import { getAll, set, update } from '@/shared/storage';
-import { DEFAULT_STORAGE, type Collection, type Word } from '@/shared/types';
+import { get, getAll, set, update } from '@/shared/storage';
+import { DEFAULT_STORAGE, type Collection, type DictCacheEntry, type Word } from '@/shared/types';
+import { queryDictionary } from '@/shared/dictionary';
 
 // Initialize defaults on install.
 chrome.runtime.onInstalled.addListener(async () => {
@@ -23,6 +24,11 @@ chrome.runtime.onInstalled.addListener(async () => {
     title: chrome.i18n.getMessage('contextMenuAddWord') || 'Word Learn: add "%s" to highlight list',
     contexts: ['selection'],
   });
+  chrome.contextMenus.create({
+    id: 'wl-lookup',
+    title: chrome.i18n.getMessage('contextMenuLookup') || 'Word Learn: lookup "%s"',
+    contexts: ['selection'],
+  });
 });
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
@@ -39,38 +45,83 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   } else if (info.menuItemId === 'wl-add-word') {
     await addWord(text);
     await broadcastWordsUpdated();
+  } else if (info.menuItemId === 'wl-lookup') {
+    // 通知内容脚本显示释义卡片
+    if (tab?.id) {
+      await chrome.tabs.sendMessage(tab.id, {
+        type: 'showLookup',
+        word: text,
+      }).catch(() => {});
+    }
   }
 });
 
 onMessage(async (msg) => {
+  console.log('[Word Learn] ====== Background received message ======');
+  console.log('[Word Learn] Message type:', msg.type);
+  console.log('[Word Learn] Message payload:', JSON.stringify(msg));
+  
+  let response: unknown;
   switch (msg.type) {
     case 'collect': {
+      console.log('[Word Learn] Processing collect request');
       const id = await saveCollection(msg.payload);
-      return { ok: true, id };
+      response = { ok: true, id };
+      break;
     }
     case 'addWord': {
+      console.log('[Word Learn] Processing addWord request');
       const result = await addWord(msg.text, msg.categoryId);
       if (result.added) await broadcastWordsUpdated();
-      return { ok: true, ...result };
+      response = { ok: true, ...result };
+      break;
     }
     case 'getHighlightData': {
+      console.log('[Word Learn] Processing getHighlightData request');
       const all = await getAll();
       const data: HighlightData = {
         enabled: all.enabled,
         words: all.words,
         categories: all.categories,
       };
-      return data;
+      response = data;
+      break;
     }
     case 'toggleEnabled': {
+      console.log('[Word Learn] Processing toggleEnabled request');
       await set('enabled', msg.enabled);
-      return { ok: true };
+      response = { ok: true };
+      break;
     }
     case 'wordsUpdated': {
+      console.log('[Word Learn] Processing wordsUpdated request');
       await broadcastWordsUpdated();
-      return { ok: true };
+      response = { ok: true };
+      break;
     }
+    case 'lookupWord': {
+      console.log('[Word Learn] Processing lookupWord request for:', msg.word);
+      try {
+        const entry = await lookupWord(msg.word);
+        console.log('[Word Learn] lookupWord result:', entry ? 'found' : 'not found');
+        if (entry) {
+          response = { ok: true, entry };
+        } else {
+          response = { ok: false, error: '未找到该单词的释义' };
+        }
+      } catch (err) {
+        console.error('[Word Learn] lookupWord error:', err);
+        response = { ok: false, error: String(err) };
+      }
+      break;
+    }
+    default:
+      console.warn('[Word Learn] Unknown message type:', (msg as { type: string }).type);
+      response = { ok: false, error: 'Unknown message type' };
   }
+  
+  console.log('[Word Learn] Sending response:', JSON.stringify(response));
+  return response;
 });
 
 async function broadcastWordsUpdated(): Promise<void> {
@@ -116,4 +167,35 @@ async function saveCollection(
   };
   await update('collections', (cur) => [entry, ...cur]);
   return id;
+}
+
+/** 缓存有效期：7 天 */
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+async function lookupWord(rawWord: string): Promise<DictCacheEntry | null> {
+  const word = rawWord.trim().toLowerCase();
+  console.log('[Word Learn] lookupWord called:', word);
+  if (!word) return null;
+
+  // 检查缓存
+  const cache = await get('dictCache');
+  const cached = cache[word];
+  if (cached && Date.now() - cached.queriedAt < CACHE_TTL_MS) {
+    console.log('[Word Learn] Cache hit:', word);
+    return cached;
+  }
+
+  // 获取配置的 API 类型
+  const apiType = await get('dictApi');
+  console.log('[Word Learn] Using API type:', apiType);
+
+  // 查询词典
+  console.log('[Word Learn] Querying dictionary for:', word);
+  const entry = await queryDictionary(word, apiType);
+  console.log('[Word Learn] Dictionary result:', entry);
+  if (!entry) return null;
+
+  // 存入缓存
+  await update('dictCache', (cur) => ({ ...cur, [word]: entry }));
+  return entry;
 }

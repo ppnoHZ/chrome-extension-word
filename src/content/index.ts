@@ -1,6 +1,7 @@
 import { send } from '@/shared/messaging';
-import { clearHighlights, hasData, highlight, setData, SKIP_TAGS } from './highlighter';
+import { clearHighlights, hasData, highlight, setData, SKIP_TAGS, HL_CLASS } from './highlighter';
 import { installCollector } from './collector';
+import { showCard } from './definition-card';
 
 /**
  * Pre-render highlights this many pixels outside the viewport so they appear
@@ -38,16 +39,122 @@ if (location.protocol === 'about:' || location.protocol === 'data:') {
 
 async function bootstrap(): Promise<void> {
   installCollector();
+  installClickHandler();
+  installSelectionHandler();
+  installKeyboardShortcuts();
   await refresh();
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.type === 'wordsUpdated') void refresh();
+    // 右键菜单查询释义
+    if (msg?.type === 'showLookup' && msg.word) {
+      const selection = window.getSelection();
+      let rect: DOMRect | null = null;
+      if (selection && selection.rangeCount > 0) {
+        rect = selection.getRangeAt(0).getBoundingClientRect();
+      }
+      // 如果没有有效的选区位置，使用屏幕中心
+      if (!rect || rect.width === 0) {
+        rect = new DOMRect(window.innerWidth / 2 - 100, window.innerHeight / 3, 200, 20);
+      }
+      void showCard(msg.word, rect);
+    }
   });
 
   // SPA navigation: re-highlight on history changes.
   patchHistory();
   window.addEventListener('wl:locationchange', () => {
     void refresh();
+  });
+}
+
+/** Alt+D 快捷键查询选中文本 */
+function installKeyboardShortcuts(): void {
+  document.addEventListener('keydown', (e) => {
+    // Alt+D: 查询当前选中的文本
+    if (e.altKey && e.key.toLowerCase() === 'd') {
+      const selection = window.getSelection();
+      const text = selection?.toString().trim();
+      if (text && /^[a-zA-Z]+(?:[-'][a-zA-Z]+)*$/.test(text)) {
+        e.preventDefault();
+        const range = selection?.getRangeAt(0);
+        if (range) {
+          console.log('[Word Learn] Alt+D lookup:', text);
+          void showCard(text, range.getBoundingClientRect());
+        }
+      }
+    }
+  });
+}
+
+/** 事件委托：点击高亮词时显示释义卡片 */
+function installClickHandler(): void {
+  console.log('[Word Learn] Installing click handler for highlighted words');
+  document.addEventListener('click', (e) => {
+    const target = e.target as Element;
+    console.log('[Word Learn] Click event, target:', target.tagName, target.className);
+    const hlSpan = target.closest(`.${HL_CLASS}`);
+    if (hlSpan) {
+      console.log('[Word Learn] Clicked on highlighted word:', hlSpan.textContent);
+      e.preventDefault();
+      e.stopPropagation();
+      const word = hlSpan.textContent?.trim();
+      if (word) {
+        const rect = hlSpan.getBoundingClientRect();
+        console.log('[Word Learn] Showing card for word:', word);
+        void showCard(word, rect);
+      }
+    }
+  }, true);
+}
+
+/** 选中文本时显示释义卡片（双击或拖选单词） */
+function installSelectionHandler(): void {
+  console.log('[Word Learn] Installing selection handler for any word lookup');
+  
+  // 用于防止双击和 mouseup 重复触发
+  let lastShownWord = '';
+  let lastShownTime = 0;
+  
+  const tryShowCard = (text: string, rect: DOMRect) => {
+    const now = Date.now();
+    // 300ms 内同一个词不重复触发
+    if (text === lastShownWord && now - lastShownTime < 300) {
+      return;
+    }
+    lastShownWord = text;
+    lastShownTime = now;
+    console.log('[Word Learn] Selection lookup for:', text);
+    void showCard(text, rect);
+  };
+  
+  // 双击选词
+  document.addEventListener('dblclick', () => {
+    const selection = window.getSelection();
+    const text = selection?.toString().trim();
+    // 只处理单个单词（无空格）
+    if (text && /^[a-zA-Z]+(?:[-'][a-zA-Z]+)*$/.test(text)) {
+      const range = selection?.getRangeAt(0);
+      if (range) {
+        tryShowCard(text, range.getBoundingClientRect());
+      }
+    }
+  });
+  
+  // 拖选后松开鼠标
+  document.addEventListener('mouseup', () => {
+    // 延迟一点让选区稳定
+    setTimeout(() => {
+      const selection = window.getSelection();
+      const text = selection?.toString().trim();
+      // 只处理单个单词（无空格）
+      if (text && /^[a-zA-Z]+(?:[-'][a-zA-Z]+)*$/.test(text) && selection?.rangeCount) {
+        const range = selection.getRangeAt(0);
+        if (!range.collapsed) {
+          tryShowCard(text, range.getBoundingClientRect());
+        }
+      }
+    }, 50);
   });
 }
 

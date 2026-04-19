@@ -1,4 +1,5 @@
 import type { Collection, Word, Category } from './types';
+import type { DictionaryEntry } from './dictionary';
 
 /**
  * All cross-context messages flow through here. Keep payloads serializable.
@@ -9,7 +10,8 @@ export type Message =
   | { type: 'addWord'; text: string; categoryId?: string }
   | { type: 'getHighlightData' }
   | { type: 'wordsUpdated' }
-  | { type: 'toggleEnabled'; enabled: boolean };
+  | { type: 'toggleEnabled'; enabled: boolean }
+  | { type: 'lookupWord'; word: string };
 
 export interface HighlightData {
   enabled: boolean;
@@ -23,10 +25,22 @@ export type Response<M extends Message> = M extends { type: 'collect' }
     ? { ok: true; added: boolean; categoryId: string } | { ok: false; error: string }
     : M extends { type: 'getHighlightData' }
       ? HighlightData
-      : { ok: true };
+      : M extends { type: 'lookupWord' }
+        ? { ok: true; entry: DictionaryEntry } | { ok: false; error: string }
+        : { ok: true };
 
 export function send<M extends Message>(msg: M): Promise<Response<M>> {
-  return chrome.runtime.sendMessage(msg) as Promise<Response<M>>;
+  console.log('[Word Learn] Messaging: sending message:', msg.type, msg);
+  return chrome.runtime.sendMessage(msg).then(
+    (res) => {
+      console.log('[Word Learn] Messaging: received response for', msg.type, ':', res);
+      return res as Response<M>;
+    },
+    (err) => {
+      console.error('[Word Learn] Messaging: error for', msg.type, ':', err);
+      throw err;
+    }
+  );
 }
 
 export function onMessage(
@@ -35,10 +49,18 @@ export function onMessage(
     sender: chrome.runtime.MessageSender,
   ) => Promise<unknown> | unknown,
 ): void {
+  console.log('[Word Learn] Registering message handler in background');
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    console.log('[Word Learn] onMessage listener triggered, raw message:', msg);
     Promise.resolve(handler(msg as Message, sender)).then(
-      (result) => sendResponse(result),
-      (err) => sendResponse({ ok: false, error: String(err?.message ?? err) }),
+      (result) => {
+        console.log('[Word Learn] Handler completed, sending response');
+        sendResponse(result);
+      },
+      (err) => {
+        console.error('[Word Learn] Handler error:', err);
+        sendResponse({ ok: false, error: String(err?.message ?? err) });
+      },
     );
     return true; // keep the channel open for async response
   });

@@ -18,6 +18,10 @@
     "message": "Word Learn：将「%s」加入高亮列表",
     "description": "将选中文本加入高亮字典。"
   },
+  "contextMenuLookup": {
+    "message": "Word Learn：查询「%s」的释义",
+    "description": "右键菜单标签，用于查询选中文本的释义。"
+  },
 
   "popup_addWordPlaceholder": { "message": "添加一个单词…" },
   "popup_addButton": { "message": "添加" },
@@ -40,8 +44,35 @@
   "options_delete": { "message": "删除" },
   "options_promote": { "message": "加入高亮列表" },
   "options_noCollections": { "message": "暂无收藏。" },
+  "options_tabSettings": { "message": "设置" },
+
+  "settings_dictApi": { "message": "词典接口" },
+  "settings_dictApiDesc": { "message": "选择用于查询单词释义的词典服务。" },
+  "settings_apiAuto": { "message": "自动（尝试多个）" },
+  "settings_apiYoudao": { "message": "有道翻译" },
+  "settings_apiIciba": { "message": "金山词霸" },
+  "settings_apiFreeDictionary": { "message": "Free Dictionary（仅英文释义）" },
+  "settings_cache": { "message": "词典缓存" },
+  "settings_cacheDesc": { "message": "已缓存 $COUNT$ 个单词。清除缓存后将重新获取释义。", "placeholders": { "count": { "content": "$1" } } },
+  "settings_clearCache": { "message": "清除缓存" },
+  "options_tabSettings": { "message": "设置" },
+
+  "settings_dictApi": { "message": "词典接口" },
+  "settings_dictApiDesc": { "message": "选择用于查询单词释义的词典服务。" },
+  "settings_apiAuto": { "message": "自动（尝试多个）" },
+  "settings_apiYoudao": { "message": "有道翻译" },
+  "settings_apiIciba": { "message": "金山词霸" },
+  "settings_apiFreeDictionary": { "message": "Free Dictionary（仅英文释义）" },
+  "settings_cache": { "message": "词典缓存" },
+  "settings_cacheDesc": { "message": "已缓存 $COUNT$ 个单词。清除缓存后将重新获取释义。", "placeholders": { "count": { "content": "$1" } } },
+  "settings_clearCache": { "message": "清除缓存" },
 
   "feedback_saved": { "message": "✓ 已保存" },
   "feedback_wordAdded": { "message": "✓ 已加入高亮列表" },
-  "feedback_wordExists": { "message": "该单词已在高亮列表中" }
+  "feedback_wordExists": { "message": "该单词已在高亮列表中" },
+
+  "dict_loading": { "message": "加载中..." },
+  "dict_notFound": { "message": "未找到释义" },
+  "dict_error": { "message": "加载失败" },
+  "dict_close": { "message": "关闭" }
 }
