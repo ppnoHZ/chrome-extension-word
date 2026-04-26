@@ -1,0 +1,19 @@
+# uv / Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.python-version
+
+# 环境变量
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# uv lock file (可选择是否提交)
+# uv.lock

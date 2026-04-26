@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { getAll, set, update } from '@/shared/storage';
 import { send } from '@/shared/messaging';
 import { t } from '@/shared/i18n';
+import { authenticateWithBackend, logout as logoutOAuth } from '@/shared/oauth';
 import type { Category, Collection, Word, DictApiType } from '@/shared/types';
 
 const categories = ref<Category[]>([]);
@@ -20,6 +21,18 @@ const newWordCat = ref('default');
 const dictApi = ref<DictApiType>('auto');
 const cacheCount = ref(0);
 
+// 登录相关
+const authProvider = ref<'none' | 'github' | 'custom'>('none');
+const userInfo = ref<{ id: string; name?: string; email?: string; avatar?: string } | undefined>();
+const isLoggingIn = ref(false);
+const loginError = ref('');
+
+// 后端 API 地址
+const apiUrl = ref('');
+
+// 自动同步
+const autoSync = ref(false);
+
 onMounted(() => void reload());
 
 async function reload() {
@@ -29,6 +42,10 @@ async function reload() {
   collections.value = all.collections;
   dictApi.value = all.dictApi || 'auto';
   cacheCount.value = Object.keys(all.dictCache || {}).length;
+  authProvider.value = all.authProvider || 'none';
+  userInfo.value = all.userInfo;
+  apiUrl.value = all.apiUrl || '';
+  autoSync.value = all.autoSync || false;
   if (categories.value[0]) newWordCat.value = categories.value[0].id;
 }
 
@@ -133,16 +150,20 @@ async function exportJson() {
   URL.revokeObjectURL(url);
 }
 
-async function importJson(ev: Event) {
-  const file = (ev.target as HTMLInputElement).files?.[0];
-  if (!file) return;
-  const text = await file.text();
-  const data = JSON.parse(text);
-  if (Array.isArray(data.categories)) await set('categories', data.categories);
-  if (Array.isArray(data.words)) await set('words', data.words);
-  if (Array.isArray(data.collections)) await set('collections', data.collections);
-  await reload();
-  await send({ type: 'wordsUpdated' });
+async function importJson(file: File) {
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (Array.isArray(data.categories)) await set('categories', data.categories);
+    if (Array.isArray(data.words)) await set('words', data.words);
+    if (Array.isArray(data.collections)) await set('collections', data.collections);
+    await reload();
+    await send({ type: 'wordsUpdated' });
+    // returning false prevents default upload behavior
+  } catch (err) {
+    console.error('Import failed', err);
+  }
+  return false;
 }
 
 // 设置相关函数
@@ -154,155 +175,232 @@ async function clearDictCache() {
   await set('dictCache', {});
   cacheCount.value = 0;
 }
+
+// 保存后端设置
+async function saveBackendSettings() {
+  await set('apiUrl', apiUrl.value);
+  await set('autoSync', autoSync.value);
+}
+
+// 登录相关函数
+async function loginWithGitHub() {
+  if (!apiUrl.value.trim()) {
+    loginError.value = '请先配置后端 API 地址';
+    return;
+  }
+  isLoggingIn.value = true;
+  loginError.value = '';
+  try {
+    const result = await authenticateWithBackend(apiUrl.value.trim());
+    userInfo.value = result.user;
+    authProvider.value = 'github';
+  } catch (err: any) {
+    loginError.value = err.message || '登录失败';
+  } finally {
+    isLoggingIn.value = false;
+  }
+}
+
+async function logout() {
+  await logoutOAuth();
+  authProvider.value = 'none';
+  userInfo.value = undefined;
+}
 </script>
 
 <template>
-  <div class="page">
-    <header>
-      <h1>{{ t('options_title') }}</h1>
-      <nav>
-        <button :class="{ active: tab === 'words' }" @click="tab = 'words'">{{ t('options_tabWords') }} ({{ words.length }})</button>
-        <button :class="{ active: tab === 'categories' }" @click="tab = 'categories'">{{ t('options_tabCategories') }} ({{ categories.length }})</button>
-        <button :class="{ active: tab === 'collections' }" @click="tab = 'collections'">{{ t('options_tabCollections') }} ({{ collections.length }})</button>
-        <button :class="{ active: tab === 'settings' }" @click="tab = 'settings'">{{ t('options_tabSettings') }}</button>
-      </nav>
-      <div class="actions">
-        <button @click="exportJson">{{ t('options_export') }}</button>
-        <label class="import-btn">
-          {{ t('options_import') }}
-          <input type="file" accept="application/json" @change="importJson" />
-        </label>
+  <a-layout class="page-layout">
+    <a-layout-header class="header">
+      <div class="header-content">
+        <h1>{{ t('options_title') }}</h1>
+        <div class="actions">
+          <a-button type="primary" @click="exportJson">{{ t('options_export') }}</a-button>
+          <a-upload :show-upload-list="false" :before-upload="importJson" accept="application/json">
+            <a-button>{{ t('options_import') }}</a-button>
+          </a-upload>
+        </div>
       </div>
-    </header>
+    </a-layout-header>
 
-    <main v-if="tab === 'words'">
-      <form class="add" @submit.prevent="addWord">
-        <input v-model="newWordText" :placeholder="t('options_wordPlaceholder')" />
-        <select v-model="newWordCat">
-          <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
-        </select>
-        <button type="submit">{{ t('options_addWord') }}</button>
-      </form>
+    <a-layout-content class="main-content">
+      <a-tabs v-model:activeKey="tab" class="main-tabs">
+        <!-- Words Tab -->
+        <a-tab-pane key="words" :tab="`${t('options_tabWords')} (${words.length})`">
+          <a-card :bordered="false" class="mb-4 shadow-sm">
+            <a-form layout="inline" @finish="addWord">
+              <a-form-item>
+                <a-input v-model:value="newWordText" :placeholder="t('options_wordPlaceholder')" style="width: 300px" />
+              </a-form-item>
+              <a-form-item>
+                <a-select v-model:value="newWordCat" style="width: 150px">
+                  <a-select-option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</a-select-option>
+                </a-select>
+              </a-form-item>
+              <a-form-item>
+                <a-button type="primary" html-type="submit" :disabled="!newWordText.trim()">{{ t('options_addWord') }}</a-button>
+              </a-form-item>
+            </a-form>
+          </a-card>
 
-      <section v-for="cat in categories" :key="cat.id" class="cat-section">
-        <h3>
-          <span class="swatch" :style="{ background: cat.color }"></span>
-          {{ cat.name }}
-          <span class="count">({{ wordsByCategory.get(cat.id)?.length ?? 0 }})</span>
-        </h3>
-        <ul class="word-list">
-          <li v-for="w in wordsByCategory.get(cat.id) ?? []" :key="w.text">
-            <span class="word">{{ w.text }}</span>
-            <select :value="w.categoryId" @change="moveWord(w.text, ($event.target as HTMLSelectElement).value)">
-              <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
-            </select>
-            <button class="del" @click="deleteWord(w.text)">×</button>
-          </li>
-        </ul>
-      </section>
-    </main>
+          <a-row :gutter="[16, 16]">
+            <a-col :xs="24" :md="12" :lg="8" v-for="cat in categories" :key="cat.id">
+              <a-card size="small" class="cat-card shadow-sm">
+                <template #title>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="swatch" :style="{ backgroundColor: cat.color }"></span>
+                    <span>{{ cat.name }} ({{ wordsByCategory.get(cat.id)?.length ?? 0 }})</span>
+                  </div>
+                </template>
+                <a-list size="small" :dataSource="wordsByCategory.get(cat.id) ?? []">
+                  <template #renderItem="{ item }">
+                    <a-list-item>
+                      <span style="flex: 1; font-weight: 500;">{{ item.text }}</span>
+                      <a-select :value="item.categoryId" @change="moveWord(item.text, $event as string)" size="small" style="width: 100px; margin-right: 8px;">
+                        <a-select-option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</a-select-option>
+                      </a-select>
+                      <a-button danger size="small" type="text" @click="deleteWord(item.text)">×</a-button>
+                    </a-list-item>
+                  </template>
+                </a-list>
+              </a-card>
+            </a-col>
+          </a-row>
+        </a-tab-pane>
 
-    <main v-else-if="tab === 'categories'">
-      <form class="add" @submit.prevent="addCategory">
-        <input v-model="newCatName" :placeholder="t('options_categoryNamePlaceholder')" />
-        <input v-model="newCatColor" type="color" />
-        <button type="submit">{{ t('options_addWord') }}</button>
-      </form>
-      <ul class="cat-list">
-        <li v-for="c in categories" :key="c.id">
-          <input
-            type="color"
-            :value="c.color"
-            @change="updateCategoryColor(c.id, ($event.target as HTMLInputElement).value)"
-          />
-          <span class="name">{{ c.name }}</span>
-          <button v-if="c.id !== 'default'" class="del" @click="deleteCategory(c.id)">{{ t('options_delete') }}</button>
-        </li>
-      </ul>
-    </main>
+        <!-- Categories Tab -->
+        <a-tab-pane key="categories" :tab="`${t('options_tabCategories')} (${categories.length})`">
+          <a-card :bordered="false" class="mb-4 shadow-sm">
+            <a-form layout="inline" @finish="addCategory">
+              <a-form-item>
+                <a-input v-model:value="newCatName" :placeholder="t('options_categoryNamePlaceholder')" style="width: 250px" />
+              </a-form-item>
+              <a-form-item>
+                <input v-model="newCatColor" type="color" style="height: 32px; border: 1px solid #d9d9d9; padding: 0 4px; border-radius: 6px;" />
+              </a-form-item>
+              <a-form-item>
+                <a-button type="primary" html-type="submit" :disabled="!newCatName.trim()">{{ t('options_addWord') }}</a-button>
+              </a-form-item>
+            </a-form>
+          </a-card>
 
-    <main v-else-if="tab === 'collections'">
-      <ul class="collection-list">
-        <li v-for="c in collections" :key="c.id">
-          <div class="text">{{ c.text }}</div>
-          <div v-if="c.context" class="context">{{ c.context }}</div>
-          <div class="meta">
-            <a :href="c.sourceUrl" target="_blank" rel="noopener">{{ c.sourceTitle || c.sourceUrl }}</a>
-            <span>· {{ new Date(c.collectedAt).toLocaleString() }}</span>
-            <span>· {{ categoryName(c.categoryId) }}</span>
-          </div>
-          <div class="row">
-            <button @click="promoteCollection(c)">{{ t('options_promote') }}</button>
-            <button class="del" @click="deleteCollection(c.id)">{{ t('options_delete') }}</button>
-          </div>
-        </li>
-        <li v-if="!collections.length" class="empty">{{ t('options_noCollections') }}</li>
-      </ul>
-    </main>
+          <a-list bordered :dataSource="categories" class="bg-white shadow-sm">
+            <template #renderItem="{ item }">
+              <a-list-item>
+                <div style="display: flex; align-items: center; gap: 16px; width: 100%">
+                  <input type="color" :value="item.color" @change="updateCategoryColor(item.id, ($event.target as HTMLInputElement).value)" style="height: 32px; border: 1px solid #d9d9d9; padding: 0 4px; border-radius: 6px;" />
+                  <span style="flex: 1; font-weight: 600;">{{ item.name }}</span>
+                  <a-button v-if="item.id !== 'default'" danger @click="deleteCategory(item.id)">{{ t('options_delete') }}</a-button>
+                </div>
+              </a-list-item>
+            </template>
+          </a-list>
+        </a-tab-pane>
 
-    <main v-else-if="tab === 'settings'">
-      <section class="settings-section">
-        <h2>{{ t('settings_dictApi') }}</h2>
-        <p class="desc">{{ t('settings_dictApiDesc') }}</p>
-        <div class="setting-row">
-          <select v-model="dictApi" @change="saveDictApi">
-            <option value="auto">{{ t('settings_apiAuto') }}</option>
-            <option value="youdao">{{ t('settings_apiYoudao') }}</option>
-            <option value="iciba">{{ t('settings_apiIciba') }}</option>
-            <option value="freedict">{{ t('settings_apiFreeDictionary') }}</option>
-          </select>
-        </div>
-      </section>
+        <!-- Collections Tab -->
+        <a-tab-pane key="collections" :tab="`${t('options_tabCollections')} (${collections.length})`">
+          <a-list v-if="collections.length" item-layout="vertical" :dataSource="collections" class="collection-list">
+            <template #renderItem="{ item }">
+              <a-list-item class="bg-white shadow-sm mb-4" style="border-radius: 8px; padding: 16px;">
+                <template #actions>
+                  <a-button type="primary" size="small" @click="promoteCollection(item)">{{ t('options_promote') }}</a-button>
+                  <a-button danger size="small" @click="deleteCollection(item.id)">{{ t('options_delete') }}</a-button>
+                </template>
+                <a-list-item-meta>
+                  <template #title>
+                    <span style="font-size: 16px; font-weight: 600;">{{ item.text }}</span>
+                  </template>
+                  <template #description>
+                    <div style="margin-bottom: 8px;">
+                      <a :href="item.sourceUrl" target="_blank" rel="noopener" style="margin-right: 16px;">{{ item.sourceTitle || item.sourceUrl }}</a>
+                      <span style="color: #888;">· {{ new Date(item.collectedAt).toLocaleString() }}</span>
+                      <span style="color: #888; margin-left: 8px;">· {{ categoryName(item.categoryId) }}</span>
+                    </div>
+                  </template>
+                </a-list-item-meta>
+                <div v-if="item.context" style="color: #555; font-style: italic; background: #f9f9f9; padding: 8px; border-radius: 4px; border-left: 3px solid #ccc;">
+                  "{{ item.context }}"
+                </div>
+              </a-list-item>
+            </template>
+          </a-list>
+          <a-empty v-else :description="t('options_noCollections')" style="margin-top: 60px;" />
+        </a-tab-pane>
 
-      <section class="settings-section">
-        <h2>{{ t('settings_cache') }}</h2>
-        <p class="desc">{{ t('settings_cacheDesc', String(cacheCount)) }}</p>
-        <div class="setting-row">
-          <button @click="clearDictCache">{{ t('settings_clearCache') }}</button>
-        </div>
-      </section>
-    </main>
-  </div>
+        <!-- Settings Tab -->
+        <a-tab-pane key="settings" :tab="t('options_tabSettings')">
+          <!-- 后端服务设置 -->
+          <a-card title="后端服务" class="mb-4 shadow-sm" :bordered="false">
+            <a-form layout="vertical">
+              <a-form-item label="后端 API 地址">
+                <a-input v-model:value="apiUrl" placeholder="http://localhost:8000" @change="saveBackendSettings" />
+                <p style="color: #888; font-size: 12px; margin-top: 4px;">部署后端服务后填写地址，用于数据同步和 GitHub 登录</p>
+              </a-form-item>
+              <a-form-item>
+                <a-checkbox v-model:checked="autoSync" @change="saveBackendSettings">自动同步数据到后端</a-checkbox>
+              </a-form-item>
+            </a-form>
+          </a-card>
+
+          <!-- 登录设置 -->
+          <a-card title="账户登录" class="mb-4 shadow-sm" :bordered="false">
+            <template v-if="userInfo">
+              <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 16px;">
+                <a-avatar v-if="userInfo.avatar" :src="userInfo.avatar" :size="48" />
+                <a-avatar v-else :size="48">{{ userInfo.name?.[0] || 'U' }}</a-avatar>
+                <div>
+                  <div style="font-weight: 600; font-size: 16px;">{{ userInfo.name || userInfo.id }}</div>
+                  <div style="color: #888;">{{ userInfo.email || `已通过 ${authProvider} 登录` }}</div>
+                </div>
+              </div>
+              <a-button danger @click="logout">退出登录</a-button>
+            </template>
+            <template v-else>
+              <a-alert v-if="loginError" type="error" :message="loginError" style="margin-bottom: 16px;" closable @close="loginError = ''" />
+              
+              <div v-if="!apiUrl" style="color: #888; margin-bottom: 16px;">
+                请先配置后端 API 地址以启用登录功能
+              </div>
+              <a-button v-else type="primary" :loading="isLoggingIn" @click="loginWithGitHub">
+                使用 GitHub 登录
+              </a-button>
+            </template>
+          </a-card>
+
+          <a-card :title="t('settings_dictApi')" class="mb-4 shadow-sm" :bordered="false">
+            <p style="color: #666; margin-bottom: 16px;">{{ t('settings_dictApiDesc') }}</p>
+            <a-select v-model:value="dictApi" style="width: 240px" @change="saveDictApi">
+              <a-select-option value="auto">{{ t('settings_apiAuto') }}</a-select-option>
+              <a-select-option value="youdao">{{ t('settings_apiYoudao') }}</a-select-option>
+              <a-select-option value="iciba">{{ t('settings_apiIciba') }}</a-select-option>
+              <a-select-option value="freedict">{{ t('settings_apiFreeDictionary') }}</a-select-option>
+            </a-select>
+          </a-card>
+
+          <a-card :title="t('settings_cache')" class="shadow-sm" :bordered="false">
+            <p style="color: #666; margin-bottom: 16px;">{{ t('settings_cacheDesc', String(cacheCount)) }}</p>
+            <a-button @click="clearDictCache">{{ t('settings_clearCache') }}</a-button>
+          </a-card>
+        </a-tab-pane>
+      </a-tabs>
+    </a-layout-content>
+  </a-layout>
 </template>
 
 <style>
-:root { color-scheme: light dark; }
-body { margin: 0; font: 14px/1.5 system-ui, sans-serif; background: #fafafa; }
-.page { max-width: 900px; margin: 0 auto; padding: 24px; }
-header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
-header h1 { margin: 0; font-size: 20px; }
-nav { display: flex; gap: 4px; }
-nav button { background: none; border: 1px solid #ccc; padding: 4px 10px; border-radius: 4px; cursor: pointer; }
-nav button.active { background: #1565c0; color: #fff; border-color: #1565c0; }
-.actions { margin-left: auto; display: flex; gap: 8px; }
-.actions button, .import-btn { background: #fff; border: 1px solid #ccc; padding: 4px 10px; border-radius: 4px; cursor: pointer; }
-.import-btn input { display: none; }
-.add { display: flex; gap: 6px; margin-bottom: 16px; }
-.add input[type=text], .add input:not([type]) { flex: 1; padding: 4px 8px; }
-.cat-section { background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px; margin-bottom: 12px; }
-.cat-section h3 { margin: 0 0 8px; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+body { background: #f0f2f5; margin: 0; }
+.page-layout { min-height: 100vh; background: transparent; }
+.header { background: #fff; padding: 0 24px; border-bottom: 1px solid #f0f0f0; }
+.header-content { max-width: 1000px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; height: 100%; }
+.header-content h1 { margin: 0; font-size: 20px; font-weight: 600; color: #1f1f1f; }
+.actions { display: flex; gap: 12px; }
+.main-content { max-width: 1000px; margin: 0 auto; width: 100%; padding: 24px; }
+.main-tabs .ant-tabs-nav { margin-bottom: 24px; }
+.mb-4 { margin-bottom: 16px; }
+.shadow-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03); border-radius: 8px; }
+.bg-white { background: #fff; }
 .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.15); }
-.count { opacity: 0.6; font-weight: normal; }
-.word-list, .cat-list, .collection-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
-.word-list li { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 4px; }
-.word-list li:hover { background: #f0f0f0; }
-.word-list .word { flex: 1; }
-.cat-list li { display: flex; align-items: center; gap: 12px; padding: 8px; background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; }
-.cat-list .name { flex: 1; font-weight: 600; }
-.collection-list li { background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px; margin-bottom: 8px; }
-.collection-list .text { font-weight: 600; font-size: 15px; }
-.collection-list .context { color: #555; font-style: italic; margin: 4px 0; font-size: 13px; }
-.collection-list .meta { font-size: 12px; opacity: 0.7; display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
-.collection-list .meta a { color: #1565c0; word-break: break-all; }
-.collection-list .row { display: flex; gap: 6px; }
-.collection-list .row button { padding: 2px 8px; cursor: pointer; }
-.collection-list .empty { text-align: center; opacity: 0.6; padding: 32px; }
-.del { background: #fff; border: 1px solid #c62828; color: #c62828; border-radius: 3px; cursor: pointer; padding: 0 6px; }
-.settings-section { background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 16px; margin-bottom: 16px; }
-.settings-section h2 { margin: 0 0 8px; font-size: 16px; }
-.settings-section .desc { margin: 0 0 12px; font-size: 13px; color: #666; }
-.setting-row { display: flex; gap: 8px; align-items: center; }
-.setting-row select { padding: 6px 10px; border-radius: 4px; border: 1px solid #ccc; min-width: 200px; }
-.setting-row button { padding: 6px 12px; border-radius: 4px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
-.setting-row button:hover { background: #f5f5f5; }
+.cat-card .ant-card-head { min-height: 40px; padding: 0 12px; }
+.cat-card .ant-card-body { padding: 0; }
+.cat-card .ant-list-item { padding: 8px 12px; }
+.collection-list .ant-list-item-meta-title { margin-bottom: 4px; }
 </style>

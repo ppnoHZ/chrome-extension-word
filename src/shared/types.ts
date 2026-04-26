@@ -48,6 +48,14 @@ export interface DictCacheEntry {
 /** 支持的词典 API 类型 */
 export type DictApiType = 'iciba' | 'youdao' | 'freedict' | 'auto';
 
+export interface OAuth2Config {
+  clientId: string;
+  authEndpoint: string;
+  scopes: string[];
+  userInfoEndpoint?: string;
+  responseType?: 'token' | 'code';
+}
+
 export interface StorageShape {
   categories: Category[];
   words: Word[];
@@ -58,6 +66,23 @@ export interface StorageShape {
   dictCache: Record<string, DictCacheEntry>;
   /** 选择的词典 API，默认 auto（自动尝试多个） */
   dictApi: DictApiType;
+  /** 后端 API 地址 */
+  apiUrl: string;
+  /** 登录的提供商类型 */
+  authProvider: 'none' | 'github' | 'custom';
+  /** 用户鉴权 token (现在可以是 OAuth2 Access Token) */
+  authToken: string;
+  /** 自定义的 OAuth2 配置参数 */
+  customOAuthConfig: OAuth2Config | null;
+  /** 是否自动同步到后端 */
+  autoSync: boolean;
+  /** 缓存的用户基本信息 */
+  userInfo?: {
+    id: string;
+    name?: string;
+    email?: string;
+    avatar?: string;
+  };
 }
 
 export const DEFAULT_STORAGE: StorageShape = {
@@ -69,4 +94,10 @@ export const DEFAULT_STORAGE: StorageShape = {
   enabled: true,
   dictCache: {},
   dictApi: 'auto',
+  apiUrl: '',
+  authProvider: 'none',
+  authToken: '',
+  customOAuthConfig: null,
+  autoSync: true,
+  userInfo: undefined,
 };
