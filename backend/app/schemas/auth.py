@@ -2,7 +2,7 @@
 认证相关 schema
 """
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.user import UserInfo
 
@@ -13,6 +13,32 @@ class AuthVerifyResponse(BaseModel):
     message: str = ""
     user: Optional[UserInfo] = None
 
+
+# ============== 本地认证 ==============
+
+class RegisterRequest(BaseModel):
+    """用户注册请求"""
+    username: str = Field(..., min_length=3, max_length=64)
+    password: str = Field(..., min_length=6, max_length=128)
+    email: Optional[str] = None
+    name: Optional[str] = None
+
+
+class LoginRequest(BaseModel):
+    """用户登录请求"""
+    username: str
+    password: str
+
+
+class AuthResponse(BaseModel):
+    """认证响应 - 返回 JWT token 和用户信息"""
+    success: bool
+    message: str = ""
+    token: Optional[str] = None
+    user: Optional[UserInfo] = None
+
+
+# ============== OAuth 认证 ==============
 
 class OAuthLoginRequest(BaseModel):
     """OAuth 登录请求"""

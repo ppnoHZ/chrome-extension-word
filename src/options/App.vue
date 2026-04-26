@@ -3,7 +3,8 @@ import { computed, onMounted, ref } from 'vue';
 import { getAll, set, update } from '@/shared/storage';
 import { send } from '@/shared/messaging';
 import { t } from '@/shared/i18n';
-import { authenticateWithBackend, logout as logoutOAuth } from '@/shared/oauth';
+import { authenticateWithGitHub, authenticateWithOAuth2, getAuthProviders, logout as logoutOAuth } from '@/shared/oauth';
+import type { AuthProvider } from '@/shared/oauth';
 import type { Category, Collection, Word, DictApiType } from '@/shared/types';
 
 const categories = ref<Category[]>([]);
@@ -27,11 +28,15 @@ const userInfo = ref<{ id: string; name?: string; email?: string; avatar?: strin
 const isLoggingIn = ref(false);
 const loginError = ref('');
 
-// 后端 API 地址
-const apiUrl = ref('');
+// 后端 API 地址（固定配置）
+const DEFAULT_API_URL = 'https://auth.zhoudd.top';
+const apiUrl = ref(DEFAULT_API_URL);
 
 // 自动同步
 const autoSync = ref(false);
+
+// 可用的认证方式列表
+const authProviders = ref<AuthProvider[]>([]);
 
 onMounted(() => void reload());
 
@@ -42,11 +47,14 @@ async function reload() {
   collections.value = all.collections;
   dictApi.value = all.dictApi || 'auto';
   cacheCount.value = Object.keys(all.dictCache || {}).length;
-  authProvider.value = all.authProvider || 'none';
+  authProvider.value = (all.authProvider === 'github' || all.authProvider === 'custom') ? all.authProvider : 'none';
   userInfo.value = all.userInfo;
-  apiUrl.value = all.apiUrl || '';
+  apiUrl.value = all.apiUrl || DEFAULT_API_URL;
   autoSync.value = all.autoSync || false;
   if (categories.value[0]) newWordCat.value = categories.value[0].id;
+  
+  // 自动加载可用的认证方式
+  authProviders.value = await getAuthProviders(apiUrl.value);
 }
 
 const wordsByCategory = computed(() => {
@@ -180,10 +188,22 @@ async function clearDictCache() {
 async function saveBackendSettings() {
   await set('apiUrl', apiUrl.value);
   await set('autoSync', autoSync.value);
+  
+  // 重新加载可用的认证方式
+  await refreshAuthProviders();
+}
+
+// 刷新认证方式列表
+async function refreshAuthProviders() {
+  if (apiUrl.value) {
+    authProviders.value = await getAuthProviders(apiUrl.value);
+  } else {
+    authProviders.value = [];
+  }
 }
 
 // 登录相关函数
-async function loginWithGitHub() {
+async function loginWithProvider(provider: AuthProvider) {
   if (!apiUrl.value.trim()) {
     loginError.value = '请先配置后端 API 地址';
     return;
@@ -191,9 +211,14 @@ async function loginWithGitHub() {
   isLoggingIn.value = true;
   loginError.value = '';
   try {
-    const result = await authenticateWithBackend(apiUrl.value.trim());
+    let result;
+    if (provider.id === 'github') {
+      result = await authenticateWithGitHub(apiUrl.value.trim());
+    } else {
+      result = await authenticateWithOAuth2(apiUrl.value.trim());
+    }
     userInfo.value = result.user;
-    authProvider.value = 'github';
+    authProvider.value = provider.id;
   } catch (err: any) {
     loginError.value = err.message || '登录失败';
   } finally {
@@ -332,8 +357,11 @@ async function logout() {
           <a-card title="后端服务" class="mb-4 shadow-sm" :bordered="false">
             <a-form layout="vertical">
               <a-form-item label="后端 API 地址">
-                <a-input v-model:value="apiUrl" placeholder="http://localhost:8000" @change="saveBackendSettings" />
-                <p style="color: #888; font-size: 12px; margin-top: 4px;">部署后端服务后填写地址，用于数据同步和 GitHub 登录</p>
+                <a-input-group compact>
+                  <a-input v-model:value="apiUrl" placeholder="http://localhost:8000" style="width: calc(100% - 80px);" @blur="saveBackendSettings" @pressEnter="saveBackendSettings" />
+                  <a-button type="primary" @click="saveBackendSettings">保存</a-button>
+                </a-input-group>
+                <p style="color: #888; font-size: 12px; margin-top: 4px;">部署后端服务后填写地址，用于数据同步和登录</p>
               </a-form-item>
               <a-form-item>
                 <a-checkbox v-model:checked="autoSync" @change="saveBackendSettings">自动同步数据到后端</a-checkbox>
@@ -357,12 +385,24 @@ async function logout() {
             <template v-else>
               <a-alert v-if="loginError" type="error" :message="loginError" style="margin-bottom: 16px;" closable @close="loginError = ''" />
               
-              <div v-if="!apiUrl" style="color: #888; margin-bottom: 16px;">
-                请先配置后端 API 地址以启用登录功能
+              <!-- OAuth 登录按钮 -->
+              <div v-if="authProviders.length === 0" style="color: #888;">
+                <p style="margin-bottom: 8px;">正在加载认证方式...</p>
+                <a-button size="small" @click="refreshAuthProviders">刷新</a-button>
               </div>
-              <a-button v-else type="primary" :loading="isLoggingIn" @click="loginWithGitHub">
-                使用 GitHub 登录
-              </a-button>
+              <a-space v-else direction="vertical" style="width: 100%;">
+                <a-button 
+                  v-for="provider in authProviders" 
+                  :key="provider.id"
+                  :type="provider.id === authProviders[0]?.id ? 'primary' : 'default'"
+                  :loading="isLoggingIn" 
+                  @click="loginWithProvider(provider)" 
+                  style="width: 220px;"
+                >
+                  <template #icon><span style="margin-right: 8px;">{{ provider.icon }}</span></template>
+                  使用 {{ provider.name }} 登录
+                </a-button>
+              </a-space>
             </template>
           </a-card>
 

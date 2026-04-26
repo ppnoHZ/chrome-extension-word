@@ -46,6 +46,15 @@ class Settings(BaseSettings):
     github_client_id: str = ""
     github_client_secret: str = ""
     
+    # 自定义 OAuth2 配置
+    oauth_name: str = "OAuth2"  # 显示名称
+    oauth_client_id: str = ""
+    oauth_client_secret: str = ""
+    oauth_auth_endpoint: str = ""  # 授权端点
+    oauth_token_endpoint: str = ""  # Token 端点
+    oauth_userinfo_endpoint: str = ""  # 用户信息端点
+    oauth_scopes: str = "openid profile email"  # 空格分隔
+    
     # JWT 配置
     jwt_secret_key: str = "your-secret-key-change-in-production"
     jwt_algorithm: str = "HS256"

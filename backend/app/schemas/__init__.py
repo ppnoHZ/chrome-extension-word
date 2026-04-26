@@ -8,6 +8,9 @@ from app.schemas.collection import CollectionSchema
 from app.schemas.sync import SyncData, SyncResponse
 from app.schemas.auth import (
     AuthVerifyResponse,
+    AuthResponse,
+    RegisterRequest,
+    LoginRequest,
     OAuthLoginRequest,
     OAuthLoginResponse,
     OAuthCallbackRequest,
@@ -23,6 +26,9 @@ __all__ = [
     "SyncData",
     "SyncResponse",
     "AuthVerifyResponse",
+    "AuthResponse",
+    "RegisterRequest",
+    "LoginRequest",
     "OAuthLoginRequest",
     "OAuthLoginResponse",
     "OAuthCallbackRequest",

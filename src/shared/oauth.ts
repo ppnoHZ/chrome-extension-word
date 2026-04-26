@@ -7,6 +7,37 @@ export interface UserProfile {
   avatar?: string;
 }
 
+export interface AuthResult {
+  token: string;
+  user: UserProfile;
+}
+
+export interface AuthProvider {
+  id: 'github' | 'custom';
+  name: string;
+  icon: string;
+}
+
+// ============== 认证提供者配置 ==============
+
+/**
+ * 获取可用的认证方式列表
+ */
+export async function getAuthProviders(apiUrl: string): Promise<AuthProvider[]> {
+  try {
+    const res = await fetch(`${apiUrl}/api/auth/providers`);
+    if (res.ok) {
+      const data = await res.json();
+      return data.providers || [];
+    }
+  } catch (err) {
+    console.error('Failed to get auth providers:', err);
+  }
+  return [];
+}
+
+// ============== GitHub OAuth 认证 ==============
+
 /**
  * 通过后端进行 GitHub OAuth 认证
  * 
@@ -15,10 +46,7 @@ export interface UserProfile {
  * 2. 使用 chrome.identity.launchWebAuthFlow 让用户授权
  * 3. 获取授权码后，调用后端 /api/auth/github/callback 换取 JWT token
  */
-export async function authenticateWithBackend(apiUrl: string): Promise<{
-  token: string;
-  user: UserProfile;
-}> {
+export async function authenticateWithGitHub(apiUrl: string): Promise<AuthResult> {
   const redirectUri = chrome.identity.getRedirectURL();
   
   // 1. 获取授权 URL
@@ -29,15 +57,113 @@ export async function authenticateWithBackend(apiUrl: string): Promise<{
   });
   
   if (!loginRes.ok) {
-    throw new Error('Failed to get authorization URL');
+    throw new Error('Failed to get GitHub authorization URL');
   }
   
   const { auth_url, state } = await loginRes.json();
   
   // 2. 启动 OAuth 授权流程
-  const code = await new Promise<string>((resolve, reject) => {
+  const code = await launchOAuthFlow(auth_url);
+  
+  // 3. 将授权码发送到后端换取 JWT token
+  const callbackRes = await fetch(`${apiUrl}/api/auth/github/callback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      code,
+      state,
+      redirect_uri: redirectUri,
+    }),
+  });
+  
+  if (!callbackRes.ok) {
+    throw new Error('Failed to exchange GitHub authorization code');
+  }
+  
+  const result = await callbackRes.json();
+  
+  if (!result.success) {
+    throw new Error(result.message || 'GitHub authentication failed');
+  }
+  
+  // 4. 保存 token 和用户信息
+  await set('authToken', result.token);
+  await set('authProvider', 'github');
+  await set('userInfo', result.user);
+  
+  return {
+    token: result.token,
+    user: result.user,
+  };
+}
+
+// ============== 自定义 OAuth2 认证 ==============
+
+/**
+ * 通过后端进行自定义 OAuth2 认证
+ * 
+ * 流程与 GitHub OAuth 相同
+ */
+export async function authenticateWithOAuth2(apiUrl: string): Promise<AuthResult> {
+  const redirectUri = chrome.identity.getRedirectURL();
+  
+  // 1. 获取授权 URL
+  const loginRes = await fetch(`${apiUrl}/api/auth/oauth2/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ redirect_uri: redirectUri }),
+  });
+  
+  if (!loginRes.ok) {
+    throw new Error('Failed to get OAuth2 authorization URL');
+  }
+  
+  const { auth_url, state } = await loginRes.json();
+  
+  // 2. 启动 OAuth 授权流程
+  const code = await launchOAuthFlow(auth_url);
+  
+  // 3. 将授权码发送到后端换取 JWT token
+  const callbackRes = await fetch(`${apiUrl}/api/auth/oauth2/callback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      code,
+      state,
+      redirect_uri: redirectUri,
+    }),
+  });
+  
+  if (!callbackRes.ok) {
+    throw new Error('Failed to exchange OAuth2 authorization code');
+  }
+  
+  const result = await callbackRes.json();
+  
+  if (!result.success) {
+    throw new Error(result.message || 'OAuth2 authentication failed');
+  }
+  
+  // 4. 保存 token 和用户信息
+  await set('authToken', result.token);
+  await set('authProvider', 'custom');
+  await set('userInfo', result.user);
+  
+  return {
+    token: result.token,
+    user: result.user,
+  };
+}
+
+// ============== 通用 OAuth 辅助函数 ==============
+
+/**
+ * 启动 OAuth 授权流程
+ */
+async function launchOAuthFlow(authUrl: string): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
     chrome.identity.launchWebAuthFlow(
-      { url: auth_url, interactive: true },
+      { url: authUrl, interactive: true },
       (responseUrl) => {
         if (chrome.runtime.lastError) {
           return reject(chrome.runtime.lastError);
@@ -61,38 +187,14 @@ export async function authenticateWithBackend(apiUrl: string): Promise<{
       }
     );
   });
-  
-  // 3. 将授权码发送到后端换取 JWT token
-  const callbackRes = await fetch(`${apiUrl}/api/auth/github/callback`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      code,
-      state,
-      redirect_uri: redirectUri,
-    }),
-  });
-  
-  if (!callbackRes.ok) {
-    throw new Error('Failed to exchange authorization code');
-  }
-  
-  const result = await callbackRes.json();
-  
-  if (!result.success) {
-    throw new Error(result.message || 'Authentication failed');
-  }
-  
-  // 4. 保存 token 和用户信息
-  await set('authToken', result.token);
-  await set('authProvider', 'github');
-  await set('userInfo', result.user);
-  
-  return {
-    token: result.token,
-    user: result.user,
-  };
 }
+
+// ============== 兼容旧 API ==============
+
+/**
+ * @deprecated 使用 authenticateWithGitHub 或 authenticateWithOAuth2
+ */
+export const authenticateWithBackend = authenticateWithGitHub;
 
 /**
  * 验证当前 token 是否有效
