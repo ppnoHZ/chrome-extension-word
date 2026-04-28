@@ -129,6 +129,7 @@ class AuthService:
             "client_id": settings.oauth_client_id,
             "redirect_uri": redirect_uri,
             "response_type": "code",
+            "response_mode": "query",
             "scope": settings.oauth_scopes,
             "state": state,
         }

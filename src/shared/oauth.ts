@@ -159,8 +159,23 @@ export async function authenticateWithOAuth2(apiUrl: string): Promise<AuthResult
 
 /**
  * 启动 OAuth 授权流程
+ * 
+ * 优先使用 chrome.identity.launchWebAuthFlow，如果失败则
+ * 回退到 chrome.tabs 方式（对自建 OAuth 服务器兼容性更好）。
  */
 async function launchOAuthFlow(authUrl: string): Promise<string> {
+  try {
+    return await launchOAuthFlowViaIdentity(authUrl);
+  } catch (err) {
+    console.warn('[Word Learn] launchWebAuthFlow failed, falling back to tabs:', err);
+    return await launchOAuthFlowViaTabs(authUrl);
+  }
+}
+
+/**
+ * 方式一：使用 chrome.identity.launchWebAuthFlow
+ */
+function launchOAuthFlowViaIdentity(authUrl: string): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     chrome.identity.launchWebAuthFlow(
       { url: authUrl, interactive: true },
@@ -186,6 +201,69 @@ async function launchOAuthFlow(authUrl: string): Promise<string> {
         resolve(code);
       }
     );
+  });
+}
+
+/**
+ * 方式二：打开新标签页 + 监听 URL 变化
+ * 
+ * 兼容自建 OAuth 服务器（即使 redirect_uri 末尾缺 / 也能正常工作）。
+ */
+function launchOAuthFlowViaTabs(authUrl: string): Promise<string> {
+  const redirectBase = chrome.identity.getRedirectURL().replace(/\/+$/, '');
+
+  return new Promise<string>((resolve, reject) => {
+    let tabId: number | undefined;
+    let settled = false;
+
+    function cleanup() {
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      chrome.tabs.onRemoved.removeListener(onRemoved);
+      if (tabId !== undefined) {
+        chrome.tabs.remove(tabId).catch(() => {});
+      }
+    }
+
+    function settle(fn: () => void) {
+      if (!settled) {
+        settled = true;
+        cleanup();
+        fn();
+      }
+    }
+
+    function onUpdated(updatedTabId: number, _info: chrome.tabs.TabChangeInfo, tab: chrome.tabs.Tab) {
+      if (updatedTabId !== tabId || !tab.url) return;
+      // 匹配 redirect URL（兼容带/不带末尾斜杠）
+      if (tab.url.startsWith(redirectBase)) {
+        const url = new URL(tab.url);
+        const code = url.searchParams.get('code');
+        const error = url.searchParams.get('error');
+
+        if (error) {
+          settle(() => reject(new Error(`OAuth error: ${error}`)));
+        } else if (code) {
+          settle(() => resolve(code));
+        } else {
+          settle(() => reject(new Error('No authorization code received')));
+        }
+      }
+    }
+
+    function onRemoved(removedTabId: number) {
+      if (removedTabId === tabId) {
+        settle(() => reject(new Error('User closed the authorization tab')));
+      }
+    }
+
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    chrome.tabs.onRemoved.addListener(onRemoved);
+
+    chrome.tabs.create({ url: authUrl }).then((tab) => {
+      tabId = tab.id;
+    }).catch((err) => {
+      settle(() => reject(err));
+    });
   });
 }
 
