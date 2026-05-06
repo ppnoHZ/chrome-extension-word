@@ -129,7 +129,13 @@ function installSelectionHandler(): void {
   };
   
   // 双击选词
-  document.addEventListener('dblclick', () => {
+  document.addEventListener('dblclick', (e) => {
+    const target = e.target as Node;
+    const element = target.nodeType === Node.TEXT_NODE ? target.parentElement : target as Element;
+    // 如果在卡片内部双击选词，不再触发弹窗
+    if (element && typeof element.closest === 'function' && element.closest('.wl-def-card')) {
+      return;
+    }
     const selection = window.getSelection();
     const text = selection?.toString().trim();
     // 只处理单个单词（无空格）
@@ -142,7 +148,13 @@ function installSelectionHandler(): void {
   });
   
   // 拖选后松开鼠标
-  document.addEventListener('mouseup', () => {
+  document.addEventListener('mouseup', (e) => {
+    const target = e.target as Node;
+    const element = target.nodeType === Node.TEXT_NODE ? target.parentElement : target as Element;
+    // 如果在卡片内部拖选，不再触发弹窗
+    if (element && typeof element.closest === 'function' && element.closest('.wl-def-card')) {
+      return;
+    }
     // 延迟一点让选区稳定
     setTimeout(() => {
       const selection = window.getSelection();

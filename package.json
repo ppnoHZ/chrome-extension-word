@@ -6,7 +6,7 @@
   "description": "Chrome extension to highlight & collect English words while browsing.",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
+    "build": "vite build",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit"
   },

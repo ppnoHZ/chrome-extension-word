@@ -24,58 +24,61 @@ function injectStyles(): void {
     .${CARD_CLASS} {
       position: fixed;
       z-index: 2147483647;
-      background: #fff;
+      background: #f5f7ff;
       border: 1px solid #e0e0e0;
-      border-radius: 8px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-      padding: 12px 14px;
-      min-width: 240px;
+      border-radius: 16px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+      padding: 16px 20px;
+      min-width: 280px;
       max-width: 360px;
-      max-height: 320px;
+      max-height: 400px;
       overflow-y: auto;
-      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      color: #333;
+      font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: #202124;
       pointer-events: auto;
     }
     .${CARD_CLASS} * {
       box-sizing: border-box;
+      margin: 0;
+      padding: 0;
     }
     .${CARD_CLASS}-header {
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin-bottom: 8px;
+      justify-content: space-between;
+      margin-bottom: 12px;
     }
     .${CARD_CLASS}-word {
-      font-size: 18px;
-      font-weight: 600;
+      font-size: 24px;
+      font-weight: 500;
       color: #1a1a1a;
       margin: 0;
     }
-    .${CARD_CLASS}-close {
-      margin-left: auto;
+    .${CARD_CLASS}-star {
       background: none;
       border: none;
-      font-size: 18px;
+      font-size: 22px;
       cursor: pointer;
-      color: #999;
-      padding: 0 4px;
+      color: #5f6368;
       line-height: 1;
     }
-    .${CARD_CLASS}-close:hover {
-      color: #333;
+    .${CARD_CLASS}-star:hover {
+      color: #fbbc04;
     }
     .${CARD_CLASS}-phonetic {
       display: flex;
       gap: 12px;
-      font-size: 13px;
-      color: #666;
-      margin-bottom: 8px;
+      margin-bottom: 16px;
     }
     .${CARD_CLASS}-phonetic span {
       display: inline-flex;
       align-items: center;
       gap: 4px;
+      background: #f1f3f4;
+      padding: 4px 12px;
+      border-radius: 16px;
+      font-size: 13px;
+      color: #3c4043;
     }
     .${CARD_CLASS}-play {
       background: none;
@@ -83,49 +86,47 @@ function injectStyles(): void {
       cursor: pointer;
       padding: 0;
       font-size: 14px;
-      color: #1565c0;
+      color: #5f6368;
+      display: flex;
+      align-items: center;
     }
     .${CARD_CLASS}-play:hover {
-      color: #0d47a1;
+      color: #202124;
+    }
+    .${CARD_CLASS}-play svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
     }
     .${CARD_CLASS}-meanings {
+      display: block;
       margin: 0;
       padding: 0;
     }
     .${CARD_CLASS}-meaning-group {
-      margin-bottom: 8px;
+      display: block;
+      margin-bottom: 12px;
     }
     .${CARD_CLASS}-meaning-group:last-child {
       margin-bottom: 0;
     }
     .${CARD_CLASS}-pos {
       display: inline-block;
-      font-size: 12px;
-      font-weight: 600;
-      color: #1565c0;
-      background: #e3f2fd;
-      padding: 1px 6px;
-      border-radius: 3px;
-      margin-bottom: 4px;
+      font-size: 15px;
+      color: #5f6368;
+      margin-right: 6px;
     }
     .${CARD_CLASS}-defs {
       list-style: none;
-      margin: 0;
-      padding: 0;
+      display: block;
+      border-radius: 8px;
+      background: #fff;
+      padding: 12px 16px;
     }
     .${CARD_CLASS}-defs li {
-      padding: 3px 0;
-      padding-left: 12px;
-      position: relative;
-      font-size: 13px;
-      line-height: 1.5;
-      color: #444;
-    }
-    .${CARD_CLASS}-defs li::before {
-      content: "•";
-      position: absolute;
-      left: 0;
-      color: #999;
+      display: block;
+      font-size: 15px;
+      color: #202124;
     }
     .${CARD_CLASS}-loading {
       text-align: center;
@@ -137,45 +138,97 @@ function injectStyles(): void {
       color: #c62828;
       padding: 16px 0;
     }
-    .${CARD_CLASS}-source {
-      margin-top: 8px;
-      padding-top: 8px;
-      border-top: 1px solid #f0f0f0;
-      font-size: 11px;
-      color: #999;
-      text-align: right;
+    .${CARD_CLASS}-footer {
+      margin-top: 20px;
+      padding-top: 12px;
+      border-top: 1px solid #ebebeb;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .${CARD_CLASS}-toggle-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: #202124;
+    }
+    /* Switch styles */
+    .${CARD_CLASS}-switch {
+      position: relative;
+      display: inline-block;
+      width: 36px;
+      height: 20px;
+    }
+    .${CARD_CLASS}-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .${CARD_CLASS}-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #4285f4;
+      border-radius: 20px;
+      transition: .2s;
+    }
+    .${CARD_CLASS}-slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 18px;
+      bottom: 2px;
+      background-color: white;
+      border-radius: 50%;
+      transition: .2s;
+    }
+    .${CARD_CLASS}-switch input:not(:checked) + .${CARD_CLASS}-slider {
+      background-color: #ccc;
+    }
+    .${CARD_CLASS}-switch input:not(:checked) + .${CARD_CLASS}-slider:before {
+      transform: translateX(-16px);
+    }
+    .${CARD_CLASS}-more-link {
+      font-size: 14px;
+      color: #1a73e8;
+      cursor: pointer;
+      text-decoration: none;
     }
     @media (prefers-color-scheme: dark) {
       .${CARD_CLASS} {
-        background: #2a2a2a;
-        border-color: #444;
-        color: #e0e0e0;
+        background: #202124;
+        border-color: #3c4043;
+        color: #e8eaed;
       }
       .${CARD_CLASS}-word {
-        color: #fff;
+        color: #e8eaed;
       }
-      .${CARD_CLASS}-phonetic {
-        color: #aaa;
+      .${CARD_CLASS}-phonetic span {
+        background: #3c4043;
+        color: #e8eaed;
+      }
+      .${CARD_CLASS}-play {
+        color: #9aa0a6;
+      }
+      .${CARD_CLASS}-play:hover {
+        color: #e8eaed;
       }
       .${CARD_CLASS}-pos {
-        background: #1e3a5f;
-        color: #90caf9;
+        color: #9aa0a6;
       }
       .${CARD_CLASS}-defs li {
-        color: #ccc;
+        color: #e8eaed;
       }
-      .${CARD_CLASS}-defs li::before {
-        color: #666;
+      .${CARD_CLASS}-toggle-group {
+        color: #e8eaed;
       }
-      .${CARD_CLASS}-close {
-        color: #888;
+      .${CARD_CLASS}-footer {
+        border-top-color: #3c4043;
       }
-      .${CARD_CLASS}-close:hover {
-        color: #fff;
-      }
-      .${CARD_CLASS}-source {
-        border-top-color: #444;
-        color: #666;
+      .${CARD_CLASS}-more-link {
+        color: #8ab4f8;
       }
     }
   `;
@@ -307,19 +360,22 @@ function positionCard(card: HTMLElement, anchor: DOMRect): void {
 
 function renderCard(card: HTMLElement, entry: DictCacheEntry): void {
   const phoneticHtml: string[] = [];
+  
+  const volumeIcon = `<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>`;
+
   if (entry.phoneticUk) {
     phoneticHtml.push(`
       <span>
-        UK /${entry.phoneticUk}/
-        ${entry.speechUk ? `<button class="${CARD_CLASS}-play" data-src="${entry.speechUk}" title="播放英式发音">🔊</button>` : ''}
+        英 [${entry.phoneticUk}]
+        ${entry.speechUk ? `<button class="${CARD_CLASS}-play" data-src="${entry.speechUk}" title="播放英式发音">${volumeIcon}</button>` : ''}
       </span>
     `);
   }
   if (entry.phoneticUs) {
     phoneticHtml.push(`
       <span>
-        US /${entry.phoneticUs}/
-        ${entry.speechUs ? `<button class="${CARD_CLASS}-play" data-src="${entry.speechUs}" title="播放美式发音">🔊</button>` : ''}
+        美 [${entry.phoneticUs}]
+        ${entry.speechUs ? `<button class="${CARD_CLASS}-play" data-src="${entry.speechUs}" title="播放美式发音">${volumeIcon}</button>` : ''}
       </span>
     `);
   }
@@ -337,43 +393,38 @@ function renderCard(card: HTMLElement, entry: DictCacheEntry): void {
             ${posHtml}
             <ul class="${CARD_CLASS}-defs">${defsHtml}</ul>
           </div>
-        `;
+        `
       } else {
         // 旧格式：直接是字符串
         return `
           <div class="${CARD_CLASS}-meaning-group">
             <ul class="${CARD_CLASS}-defs"><li>${escapeHtml(m)}</li></ul>
           </div>
-        `;
+        `
       }
     })
     .join('');
 
-  // 词典来源显示
-  const sourceNames: Record<string, string> = {
-    iciba: '金山词霸',
-    youdao: '有道翻译',
-    freedict: 'Free Dictionary',
-  };
-  const sourceName = entry.source ? sourceNames[entry.source] || entry.source : '';
-
   card.innerHTML = `
     <div class="${CARD_CLASS}-header">
       <h3 class="${CARD_CLASS}-word">${escapeHtml(entry.word)}</h3>
-      <button class="${CARD_CLASS}-close" title="${t('dict_close')}">&times;</button>
+      <button class="${CARD_CLASS}-star" title="收藏">☆</button>
     </div>
     ${phoneticHtml.length ? `<div class="${CARD_CLASS}-phonetic">${phoneticHtml.join('')}</div>` : ''}
     <div class="${CARD_CLASS}-meanings">${meaningsHtml}</div>
-    ${sourceName ? `<div class="${CARD_CLASS}-source">来源: ${sourceName}</div>` : ''}
+    <div class="${CARD_CLASS}-footer">
+      <label class="${CARD_CLASS}-toggle-group">
+        划译
+        <span class="${CARD_CLASS}-switch">
+          <input type="checkbox" checked>
+          <span class="${CARD_CLASS}-slider"></span>
+        </span>
+      </label>
+      <a href="#" class="${CARD_CLASS}-more-link">详细释义</a>
+    </div>
   `;
 
-  // 绑定关闭按钮
-  card.querySelector(`.${CARD_CLASS}-close`)?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    hideCard();
-  });
-
-  // 绑定播放按钮
+  // 绑定听音频按钮
   card.querySelectorAll<HTMLButtonElement>(`.${CARD_CLASS}-play`).forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
