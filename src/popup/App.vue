@@ -3,6 +3,9 @@ import { computed, onMounted, ref } from 'vue';
 import { getAll, set, update } from '@/shared/storage';
 import { send } from '@/shared/messaging';
 import { t } from '@/shared/i18n';
+import PopupHero from './components/PopupHero.vue';
+import PopupQuickAdd from './components/PopupQuickAdd.vue';
+import PopupRecentCollections from './components/PopupRecentCollections.vue';
 import type { Category, Collection, Word } from '@/shared/types';
 
 const enabled = ref(true);
@@ -49,68 +52,56 @@ function openOptions() {
 </script>
 
 <template>
-  <div class="popup">
-    <header>
-      <h1>{{ t('actionTitle') }}</h1>
-      <button class="toggle" :class="{ on: enabled }" @click="toggle">
-        {{ enabled ? t('popup_on') : t('popup_off') }}
-      </button>
-    </header>
+  <div class="popup-shell">
+    <PopupHero
+      :enabled="enabled"
+      :words-count="words.length"
+      :collections-count="recent.length"
+      @toggle="toggle"
+      @open-options="openOptions"
+    />
 
-    <section>
-      <div class="row">
-        <input
-          v-model="newWord"
-          :placeholder="t('popup_addWordPlaceholder')"
-          @keydown.enter="addWord"
-        />
-        <select v-model="selectedCategory">
-          <option v-for="c in categories" :key="c.id" :value="c.id">
-            {{ c.name }}
-          </option>
-        </select>
-        <button @click="addWord">{{ t('popup_addButton') }}</button>
-      </div>
-      <p class="meta">{{ t('popup_wordsTracked', String(words.length)) }}</p>
-    </section>
+    <PopupQuickAdd
+      :value="newWord"
+      :selected-category="selectedCategory"
+      :categories="categories"
+      :words-count="words.length"
+      :placeholder="t('popup_addWordPlaceholder')"
+      :submit-text="t('popup_addButton')"
+      @update:value="newWord = $event"
+      @update:selected-category="selectedCategory = $event"
+      @submit="addWord"
+    />
 
-    <section>
-      <h2>{{ t('popup_recentCollections') }}</h2>
-      <ul v-if="recent.length" class="recent">
-        <li v-for="c in recent" :key="c.id">
-          <div class="text">{{ c.text }}</div>
-          <a class="src" :href="c.sourceUrl" target="_blank" rel="noopener">
-            {{ c.sourceTitle || c.sourceUrl }}
-          </a>
-        </li>
-      </ul>
-      <p v-else class="meta">{{ t('popup_emptyHint') }}</p>
-    </section>
-
-    <footer>
-      <button class="link" @click="openOptions">{{ t('popup_manageLink') }}</button>
-    </footer>
+    <PopupRecentCollections :recent="recent" :empty-text="t('popup_emptyHint')" />
   </div>
 </template>
 
 <style>
-:root { color-scheme: light dark; }
-body { margin: 0; font: 13px/1.4 system-ui, sans-serif; }
-.popup { width: 320px; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
-header { display: flex; justify-content: space-between; align-items: center; }
-h1 { margin: 0; font-size: 14px; }
-h2 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; opacity: 0.7; }
-.toggle { border: 1px solid #888; background: #eee; padding: 2px 8px; border-radius: 10px; cursor: pointer; font-weight: 600; }
-.toggle.on { background: #2e7d32; color: #fff; border-color: #2e7d32; }
-.row { display: flex; gap: 4px; }
-.row input { flex: 1; padding: 4px 6px; }
-.row select { padding: 4px; }
-.row button { padding: 2px 8px; cursor: pointer; }
-.meta { margin: 4px 0 0; font-size: 11px; opacity: 0.7; }
-.recent { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; }
-.recent li { padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px; }
-.recent .text { font-weight: 600; }
-.recent .src { font-size: 11px; opacity: 0.7; word-break: break-all; }
-.link { background: none; border: none; color: #1565c0; cursor: pointer; padding: 0; font: inherit; }
-kbd { background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 0 4px; font-size: 11px; }
+:root {
+  color-scheme: light;
+  --popup-accent: #1677ff;
+  --popup-text: #1f2937;
+  --popup-muted: #667085;
+  --popup-bg: radial-gradient(circle at top right, rgba(22, 119, 255, 0.12), transparent 36%), linear-gradient(180deg, #f6f8fc 0%, #eef2f7 100%);
+}
+
+body {
+  margin: 0;
+  font: 13px/1.5 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--popup-bg);
+}
+
+#app {
+  min-width: 360px;
+}
+
+.popup-shell {
+  width: 360px;
+  box-sizing: border-box;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
 </style>

@@ -1,4 +1,5 @@
 import { get, getAll } from './storage';
+import { resolveApiUrl } from './runtime-config';
 
 // 后端 API 响应接口
 export interface BackendResponse<T = unknown> {
@@ -29,10 +30,12 @@ async function authFetch(url: string, options: RequestInit = {}): Promise<Respon
  * 验证登录状态
  */
 export async function verifyAuth(): Promise<boolean> {
-  const [apiUrl, authToken] = await Promise.all([
+  const [storedApiUrl, authToken] = await Promise.all([
     get('apiUrl'),
     get('authToken'),
   ]);
+
+  const apiUrl = resolveApiUrl(storedApiUrl);
 
   if (!apiUrl || !authToken) return false;
 
@@ -55,11 +58,13 @@ export async function verifyAuth(): Promise<boolean> {
  * 同步数据到后端
  */
 export async function syncToBackend(): Promise<boolean> {
-  const [apiUrl, authToken, autoSync] = await Promise.all([
+  const [storedApiUrl, authToken, autoSync] = await Promise.all([
     get('apiUrl'),
     get('authToken'),
     get('autoSync'),
   ]);
+
+  const apiUrl = resolveApiUrl(storedApiUrl);
 
   if (!apiUrl || !authToken || !autoSync) {
     return false;
@@ -97,10 +102,12 @@ export async function downloadFromBackend(): Promise<{
   words: unknown[];
   collections: unknown[];
 } | null> {
-  const [apiUrl, authToken] = await Promise.all([
+  const [storedApiUrl, authToken] = await Promise.all([
     get('apiUrl'),
     get('authToken'),
   ]);
+
+  const apiUrl = resolveApiUrl(storedApiUrl);
 
   if (!apiUrl || !authToken) {
     return null;
