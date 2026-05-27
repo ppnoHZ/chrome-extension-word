@@ -470,3 +470,116 @@ export async function deleteCollection(collectionId: string): Promise<boolean> {
   }
   return false;
 }
+
+// ============================================
+// 批量同步 API
+// ============================================
+
+export interface BatchSyncResult {
+  success: boolean;
+  created: number;
+  skipped: number;
+  message?: string;
+}
+
+/**
+ * 批量同步本地收藏到后端
+ * 用于用户登录后同步离线期间收集的数据
+ * 自动分块处理大批量数据（每批100条）
+ */
+export async function syncPendingCollections(
+  collections: Collection[],
+): Promise<BatchSyncResult> {
+  const [storedApiUrl, authToken] = await Promise.all([
+    get('apiUrl'),
+    get('authToken'),
+  ]);
+
+  const apiUrl = resolveApiUrl(storedApiUrl);
+  
+  if (!apiUrl || !authToken) {
+    return { success: false, created: 0, skipped: 0, message: '未登录或未配置后端' };
+  }
+
+  if (collections.length === 0) {
+    return { success: true, created: 0, skipped: 0, message: '无数据' };
+  }
+
+  // 分块处理，每批最多100条
+  const BATCH_SIZE = 100;
+  let totalCreated = 0;
+  let totalSkipped = 0;
+
+  for (let i = 0; i < collections.length; i += BATCH_SIZE) {
+    const chunk = collections.slice(i, i + BATCH_SIZE);
+    
+    try {
+      const res = await authFetch(`${apiUrl}/api/collections/batch`, {
+        method: 'POST',
+        body: JSON.stringify({
+          items: chunk.map((c) => ({
+            id: c.id,
+            text: c.text,
+            sourceUrl: c.sourceUrl,
+            sourceTitle: c.sourceTitle,
+            context: c.context,
+            domain: c.domain,
+            categoryId: c.categoryId,
+            collectedAt: c.collectedAt,
+          })),
+        }),
+      });
+
+      if (res.ok) {
+        const result: BatchSyncResult = await res.json();
+        if (result.success) {
+          totalCreated += result.created;
+          totalSkipped += result.skipped;
+        } else {
+          // 某一批失败，返回部分结果
+          return {
+            success: false,
+            created: totalCreated,
+            skipped: totalSkipped,
+            message: result.message || `同步失败（已完成 ${totalCreated} 条）`,
+          };
+        }
+      } else {
+        const error = await res.json().catch(() => ({ detail: '同步失败' }));
+        return {
+          success: false,
+          created: totalCreated,
+          skipped: totalSkipped,
+          message: error.detail || `同步失败（已完成 ${totalCreated} 条）`,
+        };
+      }
+    } catch (err) {
+      console.error('Failed to sync pending collections batch:', err);
+      return {
+        success: false,
+        created: totalCreated,
+        skipped: totalSkipped,
+        message: `${String(err)}（已完成 ${totalCreated} 条）`,
+      };
+    }
+  }
+
+  return {
+    success: true,
+    created: totalCreated,
+    skipped: totalSkipped,
+    message: `成功同步 ${totalCreated} 条收藏` + (totalSkipped > 0 ? `，跳过 ${totalSkipped} 条重复` : ''),
+  };
+}
+
+/**
+ * 检查用户是否可以同步到后端（已配置 API 地址且有有效 token）
+ */
+export async function canSyncToBackend(): Promise<boolean> {
+  const [storedApiUrl, authToken] = await Promise.all([
+    get('apiUrl'),
+    get('authToken'),
+  ]);
+  const apiUrl = resolveApiUrl(storedApiUrl);
+  return Boolean(apiUrl && authToken);
+}

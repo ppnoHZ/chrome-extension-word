@@ -87,6 +87,8 @@ export interface StorageShape {
     email?: string;
     avatar?: string;
   };
+  /** 本地未同步的收藏列表（仅未登录时使用，登录后提示同步） */
+  pendingSyncCollections: Collection[];
 }
 
 export const DEFAULT_STORAGE: StorageShape = {
@@ -104,6 +106,7 @@ export const DEFAULT_STORAGE: StorageShape = {
   customOAuthConfig: null,
   autoSync: true,
   userInfo: undefined,
+  pendingSyncCollections: [],
 };
 
 // ============================================
