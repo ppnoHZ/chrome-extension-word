@@ -177,3 +177,109 @@ async def delete_collection(
     db.commit()
     
     return CollectionResponse(success=True, message="删除成功")
+
+
+class BatchCollectionItem(BaseModel):
+    """批量创建收藏的单项"""
+    id: str  # 客户端生成的 UUID
+    text: str
+    sourceUrl: str = Field(alias="sourceUrl")
+    sourceTitle: str = Field(alias="sourceTitle")
+    context: Optional[str] = None
+    domain: Optional[str] = None
+    categoryId: Optional[str] = Field(default=None, alias="categoryId")
+    collectedAt: int = Field(alias="collectedAt")
+
+    class Config:
+        populate_by_name = True
+
+
+class BatchCollectionCreate(BaseModel):
+    """批量创建收藏请求"""
+    items: List[BatchCollectionItem]
+
+
+class BatchCollectionResponse(BaseModel):
+    """批量创建收藏响应"""
+    success: bool
+    created: int = 0
+    skipped: int = 0
+    message: Optional[str] = None
+
+
+@router.post("/batch", response_model=BatchCollectionResponse)
+async def create_collections_batch(
+    data: BatchCollectionCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    批量创建收藏（用于登录后同步本地数据）
+    
+    - 使用客户端提供的 id 和 collectedAt
+    - 如果 id 已存在（属于该用户且未删除）则跳过该条目
+    - 如果未指定 categoryId，使用默认 General 分类
+    """
+    if not data.items:
+        return BatchCollectionResponse(success=True, created=0, skipped=0, message="无数据")
+    
+    # 获取默认分类
+    default_category_id = get_or_create_default_category(db, user.id)
+    
+    # 检查已存在的 collection ids（仅限当前用户且未删除的）
+    item_ids = [item.id for item in data.items]
+    existing_ids = set(
+        row[0] for row in not_deleted(
+            db.query(Collection.id).filter(
+                Collection.user_id == user.id,
+                Collection.id.in_(item_ids)
+            )
+        ).all()
+    )
+    
+    # 预先批量查询用户的所有有效分类 ID，避免 N+1 查询
+    requested_category_ids = set(item.categoryId for item in data.items if item.categoryId)
+    valid_category_ids = set()
+    if requested_category_ids:
+        valid_category_ids = set(
+            row[0] for row in not_deleted(
+                db.query(Category.id).filter(
+                    Category.user_id == user.id,
+                    Category.id.in_(requested_category_ids)
+                )
+            ).all()
+        )
+    
+    created = 0
+    skipped = 0
+    
+    for item in data.items:
+        if item.id in existing_ids:
+            skipped += 1
+            continue
+        
+        # 确定分类 ID（使用预查询的有效分类集合）
+        category_id = item.categoryId if item.categoryId in valid_category_ids else default_category_id
+        
+        collection = Collection(
+            id=item.id,
+            user_id=user.id,
+            text=item.text,
+            category_id=category_id,
+            source_url=item.sourceUrl,
+            source_title=item.sourceTitle,
+            context=item.context,
+            domain=item.domain,
+            collected_at=item.collectedAt,
+        )
+        db.add(collection)
+        created += 1
+    
+    db.commit()
+    
+    return BatchCollectionResponse(
+        success=True,
+        created=created,
+        skipped=skipped,
+        message=f"成功同步 {created} 条收藏" + (f"，跳过 {skipped} 条重复" if skipped > 0 else "")
+    )

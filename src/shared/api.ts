@@ -470,3 +470,77 @@ export async function deleteCollection(collectionId: string): Promise<boolean> {
   }
   return false;
 }
+
+// ============================================
+// 批量同步 API
+// ============================================
+
+export interface BatchSyncResult {
+  success: boolean;
+  created: number;
+  skipped: number;
+  message?: string;
+}
+
+/**
+ * 批量同步本地收藏到后端
+ * 用于用户登录后同步离线期间收集的数据
+ */
+export async function syncPendingCollections(
+  collections: Collection[],
+): Promise<BatchSyncResult> {
+  const [storedApiUrl, authToken] = await Promise.all([
+    get('apiUrl'),
+    get('authToken'),
+  ]);
+
+  const apiUrl = resolveApiUrl(storedApiUrl);
+  
+  if (!apiUrl || !authToken) {
+    return { success: false, created: 0, skipped: 0, message: '未登录或未配置后端' };
+  }
+
+  if (collections.length === 0) {
+    return { success: true, created: 0, skipped: 0, message: '无数据' };
+  }
+
+  try {
+    const res = await authFetch(`${apiUrl}/api/collections/batch`, {
+      method: 'POST',
+      body: JSON.stringify({
+        items: collections.map((c) => ({
+          id: c.id,
+          text: c.text,
+          sourceUrl: c.sourceUrl,
+          sourceTitle: c.sourceTitle,
+          context: c.context,
+          domain: c.domain,
+          categoryId: c.categoryId,
+          collectedAt: c.collectedAt,
+        })),
+      }),
+    });
+
+    if (res.ok) {
+      return await res.json();
+    } else {
+      const error = await res.json().catch(() => ({ detail: '同步失败' }));
+      return { success: false, created: 0, skipped: 0, message: error.detail || '同步失败' };
+    }
+  } catch (err) {
+    console.error('Failed to sync pending collections:', err);
+    return { success: false, created: 0, skipped: 0, message: String(err) };
+  }
+}
+
+/**
+ * 检查用户是否可以同步到后端（已配置 API 地址且有有效 token）
+ */
+export async function canSyncToBackend(): Promise<boolean> {
+  const [storedApiUrl, authToken] = await Promise.all([
+    get('apiUrl'),
+    get('authToken'),
+  ]);
+  const apiUrl = resolveApiUrl(storedApiUrl);
+  return Boolean(apiUrl && authToken);
+}

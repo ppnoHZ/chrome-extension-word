@@ -2,7 +2,7 @@ import { onMessage, type HighlightData } from '@/shared/messaging';
 import { get, getAll, set, update } from '@/shared/storage';
 import { DEFAULT_STORAGE, type Collection, type DictCacheEntry, type Word } from '@/shared/types';
 import { queryDictionary } from '@/shared/dictionary';
-import { saveCollectionToBackend } from '@/shared/api';
+import { saveCollectionToBackend, canSyncToBackend } from '@/shared/api';
 
 // Initialize defaults on install.
 chrome.runtime.onInstalled.addListener(async () => {
@@ -200,31 +200,45 @@ async function saveCollection(
     collectedAt: Date.now(),
   };
   
-  // 保存到本地存储
+  // 检查是否可以同步到后端（已配置 API 地址且有 token）
+  const canSync = await canSyncToBackend();
+  
+  // 始终保存到本地 collections 用于即时显示
   await update('collections', (cur) => [entry, ...cur]);
   
-  // 同时保存到后端（如果已登录）
-  // 在 service worker 中必须 await，避免 worker 提前休眠导致请求未发出。
-  try {
-    const result = await saveCollectionToBackend({
-      text: payload.text,
-      sourceUrl: payload.sourceUrl,
-      sourceTitle: payload.sourceTitle,
-      context: payload.context,
-      domain: payload.domain,
-      categoryId: payload.categoryId,
-    });
+  if (canSync) {
+    // 可同步：尝试保存到后端
+    try {
+      const result = await saveCollectionToBackend({
+        text: payload.text,
+        sourceUrl: payload.sourceUrl,
+        sourceTitle: payload.sourceTitle,
+        context: payload.context,
+        domain: payload.domain,
+        categoryId: payload.categoryId,
+      });
 
-    if (result.success) {
-      console.log('[Word Learn] Collection saved to backend:', result.id);
-      return { id, backendSaved: true };
-    } else {
-      console.log('[Word Learn] Backend save skipped or failed:', result.message);
-      return { id, backendSaved: false, backendMessage: result.message };
+      if (result.success) {
+        console.log('[Word Learn] Collection saved to backend:', result.id);
+        return { id, backendSaved: true };
+      } else {
+        // 后端保存失败，回退写入 pendingSyncCollections 以便后续重试
+        console.log('[Word Learn] Backend save failed, adding to pendingSyncCollections:', result.message);
+        await update('pendingSyncCollections', (cur) => [entry, ...cur]);
+        return { id, backendSaved: false, backendMessage: result.message };
+      }
+    } catch (err) {
+      // 网络错误等，回退写入 pendingSyncCollections
+      console.error('[Word Learn] Failed to save collection to backend, adding to pendingSyncCollections:', err);
+      await update('pendingSyncCollections', (cur) => [entry, ...cur]);
+      return { id, backendSaved: false, backendMessage: String(err) };
     }
-  } catch (err) {
-    console.error('[Word Learn] Failed to save collection to backend:', err);
-    return { id, backendSaved: false, backendMessage: String(err) };
+  } else {
+    // 未配置后端或未登录：保存到 pendingSyncCollections，等待登录后同步
+    await update('pendingSyncCollections', (cur) => [entry, ...cur]);
+    
+    console.log('[Word Learn] Cannot sync to backend, saved to pendingSyncCollections');
+    return { id, backendSaved: false, backendMessage: '未登录或未配置后端，已保存到本地待同步' };
   }
 }
 

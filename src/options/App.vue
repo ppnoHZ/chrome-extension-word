@@ -4,6 +4,7 @@ import { getAll, set, update } from '@/shared/storage';
 import { send } from '@/shared/messaging';
 import { t } from '@/shared/i18n';
 import { authenticateWithGitHub, authenticateWithOAuth2, getAuthProviders, logout as logoutOAuth } from '@/shared/oauth';
+import { syncPendingCollections } from '@/shared/api';
 import { CURRENT_BUILD_LABEL, DEFAULT_API_URL, resolveApiUrl, normalizeApiUrl } from '@/shared/runtime-config';
 import type { AuthProvider } from '@/shared/oauth';
 import type { Category, Collection, Word, DictApiType } from '@/shared/types';
@@ -37,6 +38,13 @@ const autoSync = ref(false);
 
 // 可用的认证方式列表
 const authProviders = ref<AuthProvider[]>([]);
+
+// 待同步收藏相关
+const pendingSyncCollections = ref<Collection[]>([]);
+const showSyncPrompt = ref(false);
+const isSyncing = ref(false);
+const syncMessage = ref('');
+const syncStatus = ref<'success' | 'error' | ''>('');
 
 const activeApiUrl = computed(() => resolveApiUrl(apiUrl.value));
 const hasApiOverride = computed(() => Boolean(normalizeApiUrl(apiUrl.value)));
@@ -81,10 +89,16 @@ async function reload() {
   userInfo.value = all.userInfo;
   apiUrl.value = all.apiUrl || '';
   autoSync.value = all.autoSync || false;
+  pendingSyncCollections.value = all.pendingSyncCollections || [];
   if (categories.value[0]) newWordCat.value = categories.value[0].id;
   
   // 自动加载可用的认证方式
   authProviders.value = activeApiUrl.value ? await getAuthProviders(activeApiUrl.value) : [];
+  
+  // 如果用户已登录且有待同步的收藏，弹出同步提示
+  if (userInfo.value && pendingSyncCollections.value.length > 0) {
+    showSyncPrompt.value = true;
+  }
 }
 
 const wordsByCategory = computed(() => {
@@ -254,6 +268,9 @@ async function loginWithProvider(provider: AuthProvider) {
     }
     userInfo.value = result.user;
     authProvider.value = provider.id;
+    
+    // 登录成功后检查是否有待同步的收藏
+    await checkPendingSync();
   } catch (err: any) {
     loginError.value = err.message || '登录失败';
   } finally {
@@ -266,10 +283,110 @@ async function logout() {
   authProvider.value = 'none';
   userInfo.value = undefined;
 }
+
+// 检查待同步收藏
+async function checkPendingSync() {
+  const all = await getAll();
+  pendingSyncCollections.value = all.pendingSyncCollections || [];
+  if (pendingSyncCollections.value.length > 0) {
+    showSyncPrompt.value = true;
+  }
+}
+
+// 执行同步
+async function doSyncPendingCollections() {
+  if (pendingSyncCollections.value.length === 0) return;
+  
+  isSyncing.value = true;
+  syncMessage.value = '';
+  syncStatus.value = '';
+  
+  try {
+    const result = await syncPendingCollections(pendingSyncCollections.value);
+    
+    if (result.success) {
+      // 清空本地待同步列表
+      await set('pendingSyncCollections', []);
+      pendingSyncCollections.value = [];
+      showSyncPrompt.value = false;
+      syncMessage.value = result.message || `成功同步 ${result.created} 条收藏`;
+      syncStatus.value = 'success';
+    } else {
+      syncMessage.value = result.message || '同步失败';
+      syncStatus.value = 'error';
+    }
+  } catch (err: any) {
+    syncMessage.value = err.message || '同步失败';
+    syncStatus.value = 'error';
+  } finally {
+    isSyncing.value = false;
+  }
+}
+
+// 放弃本地待同步数据
+async function discardPendingCollections() {
+  await set('pendingSyncCollections', []);
+  pendingSyncCollections.value = [];
+  showSyncPrompt.value = false;
+  syncMessage.value = '已放弃本地待同步数据';
+}
+
+// 暂时保留本地数据（关闭弹窗，下次登录仍会提示）
+function keepPendingCollections() {
+  showSyncPrompt.value = false;
+}
 </script>
 
 <template>
   <a-layout class="page-layout">
+    <!-- 同步待处理收藏的弹窗 -->
+    <a-modal
+      v-model:open="showSyncPrompt"
+      title="发现本地未同步的收藏"
+      :closable="true"
+      :maskClosable="false"
+      :footer="null"
+      width="480px"
+    >
+      <div class="sync-prompt-content">
+        <p>
+          <a-alert
+            type="info"
+            :message="`您有 ${pendingSyncCollections.length} 条离线期间保存的收藏尚未同步到云端。`"
+            show-icon
+          />
+        </p>
+        <p style="color: #666; font-size: 13px; margin: 12px 0;">
+          您可以选择：
+        </p>
+        <div class="sync-actions">
+          <a-button
+            type="primary"
+            :loading="isSyncing"
+            @click="doSyncPendingCollections"
+          >
+            同步到云端
+          </a-button>
+          <a-button @click="keepPendingCollections">
+            稍后处理
+          </a-button>
+          <a-popconfirm
+            title="确定要放弃这些本地收藏吗？此操作不可恢复。"
+            ok-text="确定"
+            cancel-text="取消"
+            @confirm="discardPendingCollections"
+          >
+            <a-button danger>
+              放弃本地数据
+            </a-button>
+          </a-popconfirm>
+        </div>
+        <p v-if="syncMessage" style="margin-top: 12px;">
+          <a-alert :type="syncStatus === 'success' ? 'success' : 'error'" :message="syncMessage" />
+        </p>
+      </div>
+    </a-modal>
+
     <a-layout-header class="header">
       <div class="header-content">
         <h1>{{ t('options_title') }}</h1>
@@ -715,4 +832,8 @@ body { background: #f0f2f5; margin: 0; }
   .settings-hero__title { font-size: 24px; }
   .provider-card { grid-template-columns: 40px minmax(0, 1fr); }
 }
+
+/* 同步提示弹窗样式 */
+.sync-prompt-content { padding: 8px 0; }
+.sync-actions { display: flex; gap: 12px; flex-wrap: wrap; }
 </style>
