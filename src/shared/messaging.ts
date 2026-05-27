@@ -7,7 +7,7 @@ import type { DictionaryEntry } from './dictionary';
  */
 export type Message =
   | { type: 'collect'; payload: Omit<Collection, 'id' | 'collectedAt'> }
-  | { type: 'addWord'; text: string; categoryId?: string }
+  | { type: 'addWord'; text: string; categoryId?: string; domain?: string }
   | { type: 'getHighlightData' }
   | { type: 'wordsUpdated' }
   | { type: 'toggleEnabled'; enabled: boolean }

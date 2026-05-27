@@ -4,6 +4,18 @@ import { t } from '@/shared/i18n';
 const CONTEXT_RADIUS = 80;
 
 /**
+ * 从 URL 提取域名
+ */
+function extractDomain(url: string): string | undefined {
+  try {
+    const u = new URL(url);
+    return u.hostname;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Listen for keyboard shortcuts on selections:
  *   Alt+S → save selection as a Collection (with source URL + context).
  *   Alt+W → add selection to the highlight word list (dictionary).
@@ -24,7 +36,8 @@ async function addSelectionAsWord(): Promise<void> {
   const text = sel.toString().trim();
   if (!text) return;
   const range = sel.getRangeAt(0);
-  const res = await send({ type: 'addWord', text });
+  const domain = extractDomain(location.href);
+  const res = await send({ type: 'addWord', text, domain });
   if (res.ok) {
     flashFeedback(range, res.added ? t('feedback_wordAdded') : t('feedback_wordExists'));
   }
@@ -38,6 +51,7 @@ async function collectSelection(): Promise<void> {
 
   const range = sel.getRangeAt(0);
   const context = buildContext(range, text);
+  const domain = extractDomain(location.href);
 
   // IMPORTANT: capture URL/title from THIS frame, not the top window.
   await send({
@@ -47,6 +61,7 @@ async function collectSelection(): Promise<void> {
       sourceUrl: location.href,
       sourceTitle: document.title,
       context,
+      domain,
     },
   });
   flashFeedback(range, t('feedback_saved'));

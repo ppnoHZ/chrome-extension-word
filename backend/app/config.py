@@ -59,6 +59,13 @@ class Settings(BaseSettings):
     jwt_secret_key: str = "your-secret-key-change-in-production"
     jwt_algorithm: str = "HS256"
     jwt_expire_days: int = 30
+    
+    # AI 分析配置 (支持 OpenAI 兼容的 API)
+    ai_api_url: str = ""  # 如 https://api.openai.com/v1 或自定义端点
+    ai_api_key: str = ""  # API 密钥
+    ai_model: str = "gpt-4o-mini"  # 默认模型
+    ai_cache_days: int = 30  # 分析结果缓存天数
+    ai_timeout: int = 60  # API 请求超时 (秒)
 
 
 @lru_cache

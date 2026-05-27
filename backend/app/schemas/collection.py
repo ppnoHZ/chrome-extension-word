@@ -17,6 +17,7 @@ class CollectionSchema(BaseModel):
     sourceUrl: str = Field(serialization_alias="sourceUrl", validation_alias="sourceUrl")
     sourceTitle: str = Field(serialization_alias="sourceTitle", validation_alias="sourceTitle")
     context: Optional[str] = None
+    domain: Optional[str] = None  # 来源域名
     collectedAt: int = Field(serialization_alias="collectedAt", validation_alias="collectedAt")
 
     class Config:

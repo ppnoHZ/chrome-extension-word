@@ -8,6 +8,8 @@ export interface Category {
 export interface Word {
   text: string;
   categoryId: string;
+  /** 来源域名 (如 economist.com) */
+  domain?: string;
   addedAt: number;
 }
 
@@ -20,6 +22,8 @@ export interface Collection {
   sourceTitle: string;
   /** Short surrounding context snippet, trimmed to a reasonable length. */
   context?: string;
+  /** 来源域名 (如 economist.com) */
+  domain?: string;
   collectedAt: number;
 }
 
@@ -101,3 +105,87 @@ export const DEFAULT_STORAGE: StorageShape = {
   autoSync: true,
   userInfo: undefined,
 };
+
+// ============================================
+// 系统词库相关类型
+// ============================================
+
+export interface SystemCategory {
+  id: string;
+  name: string;
+  color: string;
+  description?: string;
+}
+
+export interface SystemWord {
+  id: number;
+  text: string;
+  categoryId: string;
+  phoneticUk?: string;
+  phoneticUs?: string;
+  definition?: string;
+  addedAt: number;
+}
+
+export interface SystemWordSearchResult {
+  total: number;
+  items: SystemWord[];
+}
+
+// ============================================
+// AI 分析相关类型
+// ============================================
+
+export interface MeaningDetail {
+  pos: string;   // 词性
+  cn: string;    // 中文释义
+  en: string;    // 英文释义
+}
+
+export interface ExampleSentence {
+  en: string;    // 英文例句
+  cn: string;    // 中文翻译
+}
+
+export interface RootsAnalysis {
+  root?: string;     // 词根
+  prefix?: string;   // 前缀
+  suffix?: string;   // 后缀
+  explanation: string; // 拆解说明
+}
+
+export interface AIAnalysisResult {
+  meaning?: MeaningDetail;
+  examples?: ExampleSentence[];
+  roots?: RootsAnalysis;
+  synonyms?: string[];
+  antonyms?: string[];
+  memory?: string;
+}
+
+export interface AIAnalyzeResponse {
+  word: string;
+  cached: boolean;
+  model?: string;
+  analysis: AIAnalysisResult;
+}
+
+export interface AIConfigStatus {
+  configured: boolean;
+  model?: string;
+}
+
+// ============================================
+// 域名统计相关类型
+// ============================================
+
+export interface DomainStats {
+  domain: string;
+  wordCount: number;
+  collectionCount: number;
+}
+
+export interface CombinedSearchResult {
+  userWords: Word[];
+  systemWords: SystemWord[];
+}

@@ -3,12 +3,13 @@
 """
 from datetime import datetime
 from sqlalchemy import Column, String, DateTime
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, foreign
 
 from app.database import Base
+from app.models.base import SoftDeleteMixin
 
 
-class User(Base):
+class User(SoftDeleteMixin, Base):
     """用户表 - 支持多种认证方式"""
     __tablename__ = "users"
 
@@ -23,7 +24,19 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # 关联
-    categories = relationship("Category", back_populates="user", cascade="all, delete-orphan")
-    words = relationship("Word", back_populates="user", cascade="all, delete-orphan")
-    collections = relationship("Collection", back_populates="user", cascade="all, delete-orphan")
+    # 关联 (不使用 cascade="all, delete-orphan"，软删除由代码控制)
+    categories = relationship(
+        "Category",
+        back_populates="user",
+        primaryjoin="User.id == foreign(Category.user_id)",
+    )
+    words = relationship(
+        "Word",
+        back_populates="user",
+        primaryjoin="User.id == foreign(Word.user_id)",
+    )
+    collections = relationship(
+        "Collection",
+        back_populates="user",
+        primaryjoin="User.id == foreign(Collection.user_id)",
+    )

@@ -1,100 +1,161 @@
 # AGENTS.md
 
-> Project status: **greenfield**. The workspace is empty. This document defines the intended architecture and conventions for the Chrome extension before code is written. Update it as decisions are made or change.
+> Project status: **active development**. Core features are implemented; iterating on new functionality.
 
 ## Project overview
 
 A Chrome browser extension to help users **learn English by highlighting words on any webpage**.
 
-Core features:
-- **Highlight words** on the current page based on user-managed word lists.
-- **Categories**: words belong to categories (e.g. "GRE", "business", "phrasal verbs"); each category has its own highlight color.
-- **Collection**: select text or a single word on a page and save it. The source URL, page title, and a short surrounding context snippet must be stored with each entry.
-- **Review / management UI** in the extension popup or options page to browse, categorize, recolor, edit, and delete collected words.
+**Core features:**
+- **Highlight words** on any page based on user-managed word lists
+- **Categories**: words belong to categories (e.g. "GRE", "business") with custom highlight colors
+- **Collection**: select text and save it with source URL, title, and context snippet
+- **Dictionary lookup**: click highlighted words to see definitions (iCiba, Youdao, FreeDictionary APIs)
+- **System word library**: admin-managed master word lists (GRE vocabulary, etc.) separate from user data
+- **AI analysis**: deep word analysis (meaning, examples, roots, synonyms, memory tips) via configurable AI API
+- **Domain tracking**: track which websites words/collections came from for filtering
 
-The extension is a **personal English-learning tool**, not a commercial product. Optimize for simplicity and a clean local-first data model over scalability.
+**Architecture:** Dual-storage (offline-first chrome.storage.local + optional backend sync to MySQL).
 
-## Tech stack (decided)
+## Tech stack
 
-- **Manifest V3** Chrome extension (MV2 is deprecated).
-- **TypeScript** for all extension code — `strict: true` in `tsconfig.json`.
-- **Vite** + `@crxjs/vite-plugin` for bundling the extension (HMR for popup/options, automatic manifest handling).
-- **Vue 3** with `<script setup>` + Composition API for the popup and options UI. Use **Pinia** for shared state if the UI grows beyond a couple of views; otherwise plain `ref`/`reactive` is fine.
-- Content scripts use **vanilla TypeScript + DOM APIs** — do *not* mount Vue inside host pages. Keep the injected footprint tiny and avoid style/runtime collisions.
-- **chrome.storage.local** as the source of truth for word lists and collected entries. Avoid `localStorage` (not available in service workers and not synced with extension contexts).
+| Layer | Stack |
+|-------|-------|
+| Extension | TypeScript, Vite + `@crxjs/vite-plugin`, Manifest V3 |
+| Popup/Options UI | Vue 3 (`<script setup>` + Composition API) |
+| Content scripts | Vanilla TypeScript (no framework — minimal footprint) |
+| Backend | Python 3.11+, FastAPI, SQLAlchemy, MySQL |
+| Auth | GitHub OAuth, custom OAuth2 providers, JWT |
 
-## Suggested project layout
+## Project layout
 
 ```
-manifest.json              # MV3 manifest
-src/
-  background/              # service worker: messaging hub, storage orchestration
-    index.ts
-  content/                 # content scripts (vanilla TS, no Vue): DOM scanning + highlighting
-    index.ts               #   entry; runs in every frame (all_frames: true)
-    highlighter.ts         #   wraps matched words in <span class="wl-hl wl-cat-…">
-    collector.ts           #   handles selection -> save message
-  popup/                   # toolbar popup UI (Vue 3)
-    index.html
-    main.ts
-    App.vue
-  options/                 # full management UI (Vue 3): categories, lists, colors, export
-    index.html
-    main.ts
-    App.vue
-  shared/
-    storage.ts             # typed wrappers around chrome.storage.local
-    types.ts               # Word, Category, Collection types
-    messaging.ts           # typed chrome.runtime message contracts
-  styles/
-    highlight.css          # injected highlight styles, scoped via wl- prefix
+words/
+├── src/
+│   ├── background/index.ts      # Service worker: messaging hub, storage, dictionary lookup
+│   ├── content/
+│   │   ├── index.ts             # Content script entry
+│   │   ├── highlighter.ts       # DOM word highlighting
+│   │   ├── collector.ts         # Selection → save (extracts domain from URL)
+│   │   └── definition-card.ts   # Popup card with dict + AI analysis
+│   ├── popup/                   # Vue 3 toolbar popup
+│   ├── options/                 # Vue 3 options page
+│   └── shared/
+│       ├── types.ts             # Word, Collection, SystemWord, AIAnalysisResult, etc.
+│       ├── storage.ts           # Typed chrome.storage.local wrappers
+│       ├── messaging.ts         # Typed message contracts
+│       ├── api.ts               # Backend API client (sync, AI, system words)
+│       └── dictionary.ts        # Dictionary API queries
+├── backend/
+│   ├── app/
+│   │   ├── main.py              # FastAPI app factory
+│   │   ├── config.py            # Settings from env (incl. AI_API_URL, AI_API_KEY)
+│   │   ├── models/              # SQLAlchemy: User, Word, Collection, SystemWord, AIAnalysis
+│   │   ├── schemas/             # Pydantic DTOs
+│   │   ├── routers/
+│   │   │   ├── auth.py          # OAuth login flows
+│   │   │   ├── sync.py          # Upload/download user data
+│   │   │   ├── system_words.py  # System word library CRUD
+│   │   │   ├── words.py         # Combined query (user + system), domain filtering
+│   │   │   └── ai.py            # AI analysis endpoint
+│   │   └── services/
+│   │       └── ai.py            # OpenAI-compatible API calls + caching
+│   └── schema.sql               # Full MySQL DDL
+└── public/_locales/             # i18n (en, zh_CN)
 ```
 
-## Conventions
+## Build / run commands
 
-- **CSS isolation**: every class injected into pages MUST be prefixed `wl-` (word-learn) to avoid clashing with host page styles. Prefer a single injected stylesheet over inline styles.
-- **DOM safety**: the highlighter must walk text nodes only (skip `<script>`, `<style>`, `<textarea>`, `<input>`, `contenteditable`). Never use `innerHTML` on host page content—construct nodes with `document.createTextNode` / `document.createElement`.
-- **Word matching**: case-insensitive, whole-word (use `\b…\b` or Unicode-aware boundaries). Do not highlight inside already-highlighted spans (idempotent re-runs).
-- **Performance**: throttle re-highlighting on DOM mutations with `MutationObserver` + a debounce (~250 ms). Bail out on pages with > N nodes to avoid jank.
-- **Storage shape** (target):
-  ```ts
-  type Category = { id: string; name: string; color: string /* hex */ };
-  type Word     = { text: string; categoryId: string; addedAt: number };
-  type Collection = {
-    id: string; text: string; categoryId?: string;
-    sourceUrl: string; sourceTitle: string; context?: string; collectedAt: number;
-  };
-  ```
-  **Every collection entry MUST persist `sourceUrl`** — this is a core product requirement.
-- **Messaging**: all `chrome.runtime.sendMessage` payloads go through typed helpers in `shared/messaging.ts`. No untyped `any` messages.
-- **i18n**: UI strings should support both English and Chinese (项目作者使用中文). Use `chrome.i18n` with `_locales/en` and `_locales/zh_CN` once the UI stabilizes.
+**Frontend (extension):**
+```bash
+cd words
+npm install
+npm run dev      # watch build → dist/
+npm run build    # production build
+```
+Load unpacked: `chrome://extensions` → Developer mode → **Load unpacked** → select `dist/`
 
-## Build / run / test
+**Backend:**
+```bash
+cd words/backend
+uv sync                    # or: pip install -r requirements.txt
+uv run python main.py      # starts on http://localhost:8000
+```
+- API docs: http://localhost:8000/docs
+- Apply schema: run `schema.sql` against MySQL
 
-To be defined when the stack is chosen. Once configured, document here:
-- `npm run dev` — watch build to `dist/`
-- `npm run build` — production build
-- Load unpacked: `chrome://extensions` → Developer mode → **Load unpacked** → select `dist/`
-- `npm test` — unit tests (recommend Vitest)
+**Always run `npm run build`** after non-trivial frontend changes to catch TypeScript/manifest errors.
 
-Agents should run the build after non-trivial changes to catch manifest/TS errors before handing control back.
+## Key conventions
+
+### CSS isolation
+Every class injected into host pages MUST be prefixed `wl-` (word-learn). See [src/styles/highlight.css](src/styles/highlight.css).
+
+### Content script safety
+- Walk text nodes only; skip `<script>`, `<style>`, `<textarea>`, `<input>`, `contenteditable`
+- Never use `innerHTML` on host page content
+- Construct DOM with `document.createElement` / `createTextNode`
+
+### Storage shape
+```ts
+interface Word {
+  text: string;
+  categoryId: string;
+  domain?: string;    // extracted hostname
+  addedAt: number;
+}
+interface Collection {
+  id: string;
+  text: string;
+  sourceUrl: string;  // REQUIRED — core product requirement
+  sourceTitle: string;
+  domain?: string;    // extracted hostname for filtering
+  context?: string;
+  collectedAt: number;
+}
+```
+
+### Messaging
+All `chrome.runtime.sendMessage` payloads go through typed helpers in [src/shared/messaging.ts](src/shared/messaging.ts). No untyped `any`.
+
+### Backend API patterns
+- Auth: Bearer token in `Authorization` header
+- All user data endpoints require authentication
+- System word endpoints (`/api/system/*`) are public read, admin write
+- AI endpoint caches results in `ai_analyses` table (configurable TTL)
 
 ## Pitfalls
 
-- **MV3 service workers are ephemeral** — do not hold in-memory state; persist to `chrome.storage`.
-- **Content scripts cannot access `chrome.tabs`** — route those calls via the background worker.
-- **Host page CSP** can block injected `<style>` from remote URLs; ship CSS as an extension resource and inject via `chrome.scripting.insertCSS`.
-- **Cross-origin iframes are in scope**: the content script is registered with `all_frames: true` and `match_origin_as_fallback: true`. Each frame runs its own highlighter instance, so:
-  - Use `chrome.runtime.sendMessage` from frames to the background worker; never assume the top frame can reach a child frame's DOM.
-  - When collecting a selection, capture `location.href` and `document.title` **from the frame that owns the selection**, then forward to the background worker — the top page's URL is often not what the user is actually reading.
-  - Guard against running inside `about:blank` / `data:` frames where storage/messaging may be unavailable.
-- **PDF viewer**: Chrome's built-in PDF viewer does not allow content-script injection; treat PDFs as out of scope unless explicitly requested.
-- **Re-highlighting on SPA navigation**: many sites (YouTube, Twitter) do not fire full page loads. Listen to `MutationObserver` and `history.pushState` patches.
+- **MV3 service workers are ephemeral** — persist state to `chrome.storage`, not memory
+- **Content scripts can't access `chrome.tabs`** — route via background worker
+- **Cross-origin iframes**: content script runs with `all_frames: true`; capture `location.href` from the frame, not parent
+- **SPA navigation**: use `MutationObserver` + `history.pushState` patches for re-highlighting
+- **AI requires config**: set `AI_API_URL` and `AI_API_KEY` env vars in backend
+
+## Environment variables (backend)
+
+```bash
+# Required
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_USER=root
+MYSQL_PASSWORD=xxx
+MYSQL_DATABASE=words
+
+# Optional OAuth
+GITHUB_CLIENT_ID=...
+GITHUB_CLIENT_SECRET=...
+
+# Optional AI analysis
+AI_API_URL=https://api.openai.com/v1  # or custom endpoint
+AI_API_KEY=sk-...
+AI_MODEL=gpt-4o-mini
+```
 
 ## When in doubt
 
-Ask the user (project is in Chinese, replies in Chinese are welcome) before:
-- changing the build toolchain or swapping out Vue 3 / Vite,
-- adding runtime dependencies (especially anything that ships into content scripts — keep that bundle minimal),
-- requesting broad host permissions (`<all_urls>` is acceptable for this use case but call it out),
-- introducing remote network calls (the extension should work fully offline).
+Ask before:
+- Changing build toolchain or swapping Vue 3 / Vite
+- Adding runtime dependencies to content scripts (keep bundle minimal)
+- Introducing new network calls (extension should work offline-first)
+- Modifying database schema (coordinate with frontend types)

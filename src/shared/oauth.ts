@@ -49,6 +49,7 @@ export async function getAuthProviders(apiUrl: string): Promise<AuthProvider[]> 
 export async function authenticateWithGitHub(apiUrl: string): Promise<AuthResult> {
   const redirectUri = chrome.identity.getRedirectURL();
   
+  console.log('GitHub OAuth redirect URI:', redirectUri);
   // 1. 获取授权 URL
   const loginRes = await fetch(`${apiUrl}/api/auth/github/login`, {
     method: 'POST',

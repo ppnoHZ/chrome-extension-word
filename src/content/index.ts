@@ -46,6 +46,9 @@ async function bootstrap(): Promise<void> {
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.type === 'wordsUpdated') void refresh();
+    if (msg?.type === 'wl-show-toast' && typeof msg.text === 'string') {
+      showPageToast(msg.text, msg.level ?? 'success');
+    }
     // 右键菜单查询释义
     if (msg?.type === 'showLookup' && msg.word) {
       const selection = window.getSelection();
@@ -66,6 +69,47 @@ async function bootstrap(): Promise<void> {
   window.addEventListener('wl:locationchange', () => {
     void refresh();
   });
+}
+
+function showPageToast(text: string, level: 'success' | 'warning' | 'error' = 'success'): void {
+  const bg =
+    level === 'success'
+      ? 'rgba(20, 97, 52, 0.92)'
+      : level === 'warning'
+        ? 'rgba(120, 78, 0, 0.92)'
+        : 'rgba(153, 27, 27, 0.92)';
+
+  const toast = document.createElement('div');
+  toast.textContent = text;
+  Object.assign(toast.style, {
+    position: 'fixed',
+    top: '16px',
+    right: '16px',
+    zIndex: '2147483647',
+    maxWidth: '320px',
+    background: bg,
+    color: '#fff',
+    borderRadius: '8px',
+    padding: '10px 12px',
+    font: '13px/1.4 system-ui, sans-serif',
+    boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+    opacity: '0',
+    transform: 'translateY(-6px)',
+    transition: 'opacity 180ms ease, transform 180ms ease',
+    pointerEvents: 'none',
+  } satisfies Partial<CSSStyleDeclaration>);
+
+  document.documentElement.appendChild(toast);
+  requestAnimationFrame(() => {
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateY(0)';
+  });
+
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(-6px)';
+    setTimeout(() => toast.remove(), 220);
+  }, 1800);
 }
 
 /** Alt+D 快捷键查询选中文本 */

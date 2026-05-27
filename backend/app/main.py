@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import init_db
-from app.routers import auth_router, sync_router
+from app.routers import auth_router, sync_router, system_words_router, words_router, ai_router, collections_router
 
 
 @asynccontextmanager
@@ -43,6 +43,10 @@ def create_app() -> FastAPI:
     # 注册路由
     app.include_router(auth_router, prefix=settings.api_prefix)
     app.include_router(sync_router, prefix=settings.api_prefix)
+    app.include_router(system_words_router, prefix=settings.api_prefix)
+    app.include_router(words_router, prefix=settings.api_prefix)
+    app.include_router(ai_router, prefix=settings.api_prefix)
+    app.include_router(collections_router, prefix=settings.api_prefix)
 
     # 根路由
     @app.get("/")

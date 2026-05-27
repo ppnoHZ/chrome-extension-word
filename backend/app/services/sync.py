@@ -1,9 +1,10 @@
 """
 数据同步服务
 """
+from datetime import datetime
 from sqlalchemy.orm import Session
 
-from app.models import User, Category, Word, Collection
+from app.models import User, Category, Word, Collection, not_deleted
 from app.schemas.sync import SyncData
 from app.schemas.category import CategorySchema
 from app.schemas.word import WordSchema
@@ -18,13 +19,26 @@ class SyncService:
 
     def upload(self, user: User, data: SyncData) -> tuple[bool, str]:
         """
-        上传同步数据（全量覆盖）
+        上传同步数据（全量覆盖，旧数据软删除）
         """
         try:
-            # 删除用户现有数据
-            self.db.query(Collection).filter(Collection.user_id == user.id).delete()
-            self.db.query(Word).filter(Word.user_id == user.id).delete()
-            self.db.query(Category).filter(Category.user_id == user.id).delete()
+            now = datetime.utcnow()
+            
+            # 软删除用户现有数据
+            self.db.query(Collection).filter(
+                Collection.user_id == user.id,
+                Collection.deleted_at.is_(None)
+            ).update({"deleted_at": now})
+            
+            self.db.query(Word).filter(
+                Word.user_id == user.id,
+                Word.deleted_at.is_(None)
+            ).update({"deleted_at": now})
+            
+            self.db.query(Category).filter(
+                Category.user_id == user.id,
+                Category.deleted_at.is_(None)
+            ).update({"deleted_at": now})
 
             # 导入分类
             for cat in data.categories:
@@ -42,6 +56,7 @@ class SyncService:
                     user_id=user.id,
                     text=word.text,
                     category_id=word.categoryId,
+                    domain=word.domain,
                     added_at=word.addedAt,
                 )
                 self.db.add(db_word)
@@ -56,6 +71,7 @@ class SyncService:
                     source_url=col.sourceUrl,
                     source_title=col.sourceTitle,
                     context=col.context,
+                    domain=col.domain,
                     collected_at=col.collectedAt,
                 )
                 self.db.add(db_col)
@@ -73,11 +89,17 @@ class SyncService:
 
     def download(self, user: User) -> SyncData:
         """
-        下载用户已同步的数据
+        下载用户已同步的数据 (只返回未删除的记录)
         """
-        categories = self.db.query(Category).filter(Category.user_id == user.id).all()
-        words = self.db.query(Word).filter(Word.user_id == user.id).all()
-        collections = self.db.query(Collection).filter(Collection.user_id == user.id).all()
+        categories = not_deleted(
+            self.db.query(Category).filter(Category.user_id == user.id)
+        ).all()
+        words = not_deleted(
+            self.db.query(Word).filter(Word.user_id == user.id)
+        ).all()
+        collections = not_deleted(
+            self.db.query(Collection).filter(Collection.user_id == user.id)
+        ).all()
 
         return SyncData(
             categories=[
@@ -85,7 +107,7 @@ class SyncService:
                 for c in categories
             ],
             words=[
-                WordSchema(text=w.text, categoryId=w.category_id, addedAt=w.added_at)
+                WordSchema(text=w.text, categoryId=w.category_id, domain=w.domain, addedAt=w.added_at)
                 for w in words
             ],
             collections=[
@@ -96,6 +118,7 @@ class SyncService:
                     sourceUrl=c.source_url,
                     sourceTitle=c.source_title,
                     context=c.context,
+                    domain=c.domain,
                     collectedAt=c.collected_at,
                 )
                 for c in collections

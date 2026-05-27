@@ -2,6 +2,7 @@ import { onMessage, type HighlightData } from '@/shared/messaging';
 import { get, getAll, set, update } from '@/shared/storage';
 import { DEFAULT_STORAGE, type Collection, type DictCacheEntry, type Word } from '@/shared/types';
 import { queryDictionary } from '@/shared/dictionary';
+import { saveCollectionToBackend } from '@/shared/api';
 
 // Initialize defaults on install.
 chrome.runtime.onInstalled.addListener(async () => {
@@ -34,16 +35,48 @@ chrome.runtime.onInstalled.addListener(async () => {
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   const text = info.selectionText?.trim();
   if (!text) return;
+
+  // 从 URL 提取域名
+  const extractDomain = (url: string): string | undefined => {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return undefined;
+    }
+  };
+
   if (info.menuItemId === 'wl-collect') {
     // Use the frame's URL (info.frameUrl) when available — that's where the user actually selected.
     const sourceUrl = info.frameUrl ?? info.pageUrl ?? tab?.url ?? '';
-    await saveCollection({
+    const domain = extractDomain(sourceUrl);
+    const result = await saveCollection({
       text,
       sourceUrl,
       sourceTitle: tab?.title ?? '',
+      domain,
     });
+
+    // 右键收藏后给当前页面提示结果
+    if (tab?.id != null) {
+      const message = result.backendSaved
+        ? '收藏成功，已同步到后端'
+        : `已收藏到本地，后端未同步${result.backendMessage ? `：${result.backendMessage}` : ''}`;
+
+      const payload = {
+        type: 'wl-show-toast',
+        text: message,
+        level: result.backendSaved ? 'success' : 'warning',
+      };
+
+      // 优先发给发生选中的 frame，失败则回退到当前 tab。
+      await chrome.tabs.sendMessage(tab.id, payload, { frameId: info.frameId }).catch(async () => {
+        await chrome.tabs.sendMessage(tab.id!, payload).catch(() => {});
+      });
+    }
   } else if (info.menuItemId === 'wl-add-word') {
-    await addWord(text);
+    const sourceUrl = info.frameUrl ?? info.pageUrl ?? tab?.url ?? '';
+    const domain = extractDomain(sourceUrl);
+    await addWord(text, undefined, domain);
     await broadcastWordsUpdated();
   } else if (info.menuItemId === 'wl-lookup') {
     // 通知内容脚本显示释义卡片
@@ -65,13 +98,13 @@ onMessage(async (msg) => {
   switch (msg.type) {
     case 'collect': {
       console.log('[Word Learn] Processing collect request');
-      const id = await saveCollection(msg.payload);
-      response = { ok: true, id };
+      const result = await saveCollection(msg.payload);
+      response = { ok: true, id: result.id, backendSaved: result.backendSaved, backendMessage: result.backendMessage };
       break;
     }
     case 'addWord': {
       console.log('[Word Learn] Processing addWord request');
-      const result = await addWord(msg.text, msg.categoryId);
+      const result = await addWord(msg.text, msg.categoryId, msg.domain);
       if (result.added) await broadcastWordsUpdated();
       response = { ok: true, ...result };
       break;
@@ -140,6 +173,7 @@ async function broadcastWordsUpdated(): Promise<void> {
 async function addWord(
   rawText: string,
   categoryId?: string,
+  domain?: string,
 ): Promise<{ added: boolean; categoryId: string }> {
   const text = rawText.trim();
   if (!text) return { added: false, categoryId: categoryId ?? 'default' };
@@ -151,22 +185,47 @@ async function addWord(
   const lower = text.toLowerCase();
   const exists = all.words.some((w) => w.text.toLowerCase() === lower);
   if (exists) return { added: false, categoryId: targetCat };
-  const entry: Word = { text, categoryId: targetCat, addedAt: Date.now() };
+  const entry: Word = { text, categoryId: targetCat, domain, addedAt: Date.now() };
   await update('words', (cur) => [entry, ...cur]);
   return { added: true, categoryId: targetCat };
 }
 
 async function saveCollection(
   payload: Omit<Collection, 'id' | 'collectedAt'>,
-): Promise<string> {
+): Promise<{ id: string; backendSaved: boolean; backendMessage?: string }> {
   const id = crypto.randomUUID();
   const entry: Collection = {
     ...payload,
     id,
     collectedAt: Date.now(),
   };
+  
+  // 保存到本地存储
   await update('collections', (cur) => [entry, ...cur]);
-  return id;
+  
+  // 同时保存到后端（如果已登录）
+  // 在 service worker 中必须 await，避免 worker 提前休眠导致请求未发出。
+  try {
+    const result = await saveCollectionToBackend({
+      text: payload.text,
+      sourceUrl: payload.sourceUrl,
+      sourceTitle: payload.sourceTitle,
+      context: payload.context,
+      domain: payload.domain,
+      categoryId: payload.categoryId,
+    });
+
+    if (result.success) {
+      console.log('[Word Learn] Collection saved to backend:', result.id);
+      return { id, backendSaved: true };
+    } else {
+      console.log('[Word Learn] Backend save skipped or failed:', result.message);
+      return { id, backendSaved: false, backendMessage: result.message };
+    }
+  } catch (err) {
+    console.error('[Word Learn] Failed to save collection to backend:', err);
+    return { id, backendSaved: false, backendMessage: String(err) };
+  }
 }
 
 /** 缓存有效期：7 天 */

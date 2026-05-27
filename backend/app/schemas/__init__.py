@@ -16,6 +16,23 @@ from app.schemas.auth import (
     OAuthCallbackRequest,
     OAuthCallbackResponse,
 )
+from app.schemas.system_word import (
+    SystemCategorySchema,
+    SystemCategoryCreate,
+    SystemWordSchema,
+    SystemWordCreate,
+    SystemWordBatchCreate,
+    SystemWordSearchResult,
+)
+from app.schemas.ai import (
+    MeaningDetail,
+    ExampleSentence,
+    RootsAnalysis,
+    AIAnalysisResult,
+    AIAnalyzeRequest,
+    AIAnalyzeResponse,
+    AIConfigStatus,
+)
 
 __all__ = [
     "UserInfo",
@@ -33,4 +50,19 @@ __all__ = [
     "OAuthLoginResponse",
     "OAuthCallbackRequest",
     "OAuthCallbackResponse",
+    # System words
+    "SystemCategorySchema",
+    "SystemCategoryCreate",
+    "SystemWordSchema",
+    "SystemWordCreate",
+    "SystemWordBatchCreate",
+    "SystemWordSearchResult",
+    # AI analysis
+    "MeaningDetail",
+    "ExampleSentence",
+    "RootsAnalysis",
+    "AIAnalysisResult",
+    "AIAnalyzeRequest",
+    "AIAnalyzeResponse",
+    "AIConfigStatus",
 ]
