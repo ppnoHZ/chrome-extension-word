@@ -485,6 +485,7 @@ export interface BatchSyncResult {
 /**
  * 批量同步本地收藏到后端
  * 用于用户登录后同步离线期间收集的数据
+ * 自动分块处理大批量数据（每批100条）
  */
 export async function syncPendingCollections(
   collections: Collection[],
@@ -504,33 +505,71 @@ export async function syncPendingCollections(
     return { success: true, created: 0, skipped: 0, message: '无数据' };
   }
 
-  try {
-    const res = await authFetch(`${apiUrl}/api/collections/batch`, {
-      method: 'POST',
-      body: JSON.stringify({
-        items: collections.map((c) => ({
-          id: c.id,
-          text: c.text,
-          sourceUrl: c.sourceUrl,
-          sourceTitle: c.sourceTitle,
-          context: c.context,
-          domain: c.domain,
-          categoryId: c.categoryId,
-          collectedAt: c.collectedAt,
-        })),
-      }),
-    });
+  // 分块处理，每批最多100条
+  const BATCH_SIZE = 100;
+  let totalCreated = 0;
+  let totalSkipped = 0;
 
-    if (res.ok) {
-      return await res.json();
-    } else {
-      const error = await res.json().catch(() => ({ detail: '同步失败' }));
-      return { success: false, created: 0, skipped: 0, message: error.detail || '同步失败' };
+  for (let i = 0; i < collections.length; i += BATCH_SIZE) {
+    const chunk = collections.slice(i, i + BATCH_SIZE);
+    
+    try {
+      const res = await authFetch(`${apiUrl}/api/collections/batch`, {
+        method: 'POST',
+        body: JSON.stringify({
+          items: chunk.map((c) => ({
+            id: c.id,
+            text: c.text,
+            sourceUrl: c.sourceUrl,
+            sourceTitle: c.sourceTitle,
+            context: c.context,
+            domain: c.domain,
+            categoryId: c.categoryId,
+            collectedAt: c.collectedAt,
+          })),
+        }),
+      });
+
+      if (res.ok) {
+        const result: BatchSyncResult = await res.json();
+        if (result.success) {
+          totalCreated += result.created;
+          totalSkipped += result.skipped;
+        } else {
+          // 某一批失败，返回部分结果
+          return {
+            success: false,
+            created: totalCreated,
+            skipped: totalSkipped,
+            message: result.message || `同步失败（已完成 ${totalCreated} 条）`,
+          };
+        }
+      } else {
+        const error = await res.json().catch(() => ({ detail: '同步失败' }));
+        return {
+          success: false,
+          created: totalCreated,
+          skipped: totalSkipped,
+          message: error.detail || `同步失败（已完成 ${totalCreated} 条）`,
+        };
+      }
+    } catch (err) {
+      console.error('Failed to sync pending collections batch:', err);
+      return {
+        success: false,
+        created: totalCreated,
+        skipped: totalSkipped,
+        message: `${String(err)}（已完成 ${totalCreated} 条）`,
+      };
     }
-  } catch (err) {
-    console.error('Failed to sync pending collections:', err);
-    return { success: false, created: 0, skipped: 0, message: String(err) };
   }
+
+  return {
+    success: true,
+    created: totalCreated,
+    skipped: totalSkipped,
+    message: `成功同步 ${totalCreated} 条收藏` + (totalSkipped > 0 ? `，跳过 ${totalSkipped} 条重复` : ''),
+  };
 }
 
 /**

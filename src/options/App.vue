@@ -97,6 +97,9 @@ async function reload() {
   
   // 如果用户已登录且有待同步的收藏，弹出同步提示
   if (userInfo.value && pendingSyncCollections.value.length > 0) {
+    // 清除旧的同步状态
+    syncMessage.value = '';
+    syncStatus.value = '';
     showSyncPrompt.value = true;
   }
 }
@@ -289,6 +292,9 @@ async function checkPendingSync() {
   const all = await getAll();
   pendingSyncCollections.value = all.pendingSyncCollections || [];
   if (pendingSyncCollections.value.length > 0) {
+    // 清除旧的同步状态
+    syncMessage.value = '';
+    syncStatus.value = '';
     showSyncPrompt.value = true;
   }
 }
@@ -308,9 +314,14 @@ async function doSyncPendingCollections() {
       // 清空本地待同步列表
       await set('pendingSyncCollections', []);
       pendingSyncCollections.value = [];
-      showSyncPrompt.value = false;
       syncMessage.value = result.message || `成功同步 ${result.created} 条收藏`;
       syncStatus.value = 'success';
+      // 延迟关闭弹窗，让用户看到成功消息
+      setTimeout(() => {
+        showSyncPrompt.value = false;
+        syncMessage.value = '';
+        syncStatus.value = '';
+      }, 1500);
     } else {
       syncMessage.value = result.message || '同步失败';
       syncStatus.value = 'error';
@@ -327,13 +338,21 @@ async function doSyncPendingCollections() {
 async function discardPendingCollections() {
   await set('pendingSyncCollections', []);
   pendingSyncCollections.value = [];
-  showSyncPrompt.value = false;
   syncMessage.value = '已放弃本地待同步数据';
+  syncStatus.value = 'success';
+  // 延迟关闭弹窗，让用户看到消息
+  setTimeout(() => {
+    showSyncPrompt.value = false;
+    syncMessage.value = '';
+    syncStatus.value = '';
+  }, 1500);
 }
 
 // 暂时保留本地数据（关闭弹窗，下次登录仍会提示）
 function keepPendingCollections() {
   showSyncPrompt.value = false;
+  syncMessage.value = '';
+  syncStatus.value = '';
 }
 </script>
 

@@ -3,7 +3,6 @@
 """
 import uuid
 import time
-from datetime import datetime
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
@@ -223,11 +222,22 @@ async def create_collections_batch(
     if not data.items:
         return BatchCollectionResponse(success=True, created=0, skipped=0, message="无数据")
     
+    # 去重：同一请求中可能包含重复 id，只保留第一个
+    seen_ids_in_request: set[str] = set()
+    unique_items: List[BatchCollectionItem] = []
+    duplicates_in_request = 0
+    for item in data.items:
+        if item.id in seen_ids_in_request:
+            duplicates_in_request += 1
+        else:
+            seen_ids_in_request.add(item.id)
+            unique_items.append(item)
+    
     # 获取默认分类
     default_category_id = get_or_create_default_category(db, user.id)
     
     # 检查已存在的 collection ids（仅限当前用户且未删除的）
-    item_ids = [item.id for item in data.items]
+    item_ids = [item.id for item in unique_items]
     existing_ids = set(
         row[0] for row in not_deleted(
             db.query(Collection.id).filter(
@@ -238,7 +248,7 @@ async def create_collections_batch(
     )
     
     # 预先批量查询用户的所有有效分类 ID，避免 N+1 查询
-    requested_category_ids = set(item.categoryId for item in data.items if item.categoryId)
+    requested_category_ids = set(item.categoryId for item in unique_items if item.categoryId)
     valid_category_ids = set()
     if requested_category_ids:
         valid_category_ids = set(
@@ -251,9 +261,9 @@ async def create_collections_batch(
         )
     
     created = 0
-    skipped = 0
+    skipped = duplicates_in_request  # 计入请求内重复的条目
     
-    for item in data.items:
+    for item in unique_items:
         if item.id in existing_ids:
             skipped += 1
             continue
