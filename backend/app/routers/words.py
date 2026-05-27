@@ -1,19 +1,121 @@
 """
 单词查询路由 (联合查询用户词和系统词)
 """
+import time
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.dependencies import get_db
-from app.models import User, Word, Collection, SystemWord, not_deleted
+from app.models import User, Word, Collection, SystemWord, Category, not_deleted
 from app.routers.auth import get_current_user
 from app.schemas.word import WordSchema
 from app.schemas.collection import CollectionSchema
 from app.schemas.system_word import SystemWordSchema
 
 router = APIRouter(prefix="/words", tags=["单词查询"])
+
+# 默认分类
+DEFAULT_CATEGORY_NAME = "General"
+DEFAULT_CATEGORY_COLOR = "#ffd54f"
+
+
+class WordCreate(BaseModel):
+    """创建单词请求"""
+    text: str
+    categoryId: Optional[str] = Field(default=None, alias="categoryId")
+    domain: Optional[str] = None
+
+    class Config:
+        populate_by_name = True
+
+
+class WordResponse(BaseModel):
+    """单词操作响应"""
+    success: bool
+    added: bool = False
+    message: Optional[str] = None
+
+
+def get_or_create_default_category(db: Session, user_id: str) -> str:
+    """获取或创建用户的默认 General 分类"""
+    import uuid
+    general = not_deleted(
+        db.query(Category).filter(
+            Category.user_id == user_id,
+            Category.name == DEFAULT_CATEGORY_NAME
+        )
+    ).first()
+    
+    if general:
+        return general.id
+    
+    category_id = str(uuid.uuid4())
+    category = Category(
+        id=category_id,
+        user_id=user_id,
+        name=DEFAULT_CATEGORY_NAME,
+        color=DEFAULT_CATEGORY_COLOR,
+    )
+    db.add(category)
+    db.flush()
+    return category_id
+
+
+@router.post("", response_model=WordResponse)
+async def create_word(
+    data: WordCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    添加单词到用户词库
+    
+    如果单词已存在（不区分大小写），返回 added=False
+    """
+    text = data.text.strip()
+    if not text:
+        return WordResponse(success=False, message="单词不能为空")
+    
+    # 检查是否已存在（不区分大小写）
+    existing = not_deleted(
+        db.query(Word).filter(
+            Word.user_id == user.id,
+            Word.text.ilike(text)
+        )
+    ).first()
+    
+    if existing:
+        return WordResponse(success=True, added=False, message="单词已存在")
+    
+    # 确定分类
+    if data.categoryId:
+        category = not_deleted(
+            db.query(Category).filter(
+                Category.id == data.categoryId,
+                Category.user_id == user.id
+            )
+        ).first()
+        if not category:
+            category_id = get_or_create_default_category(db, user.id)
+        else:
+            category_id = data.categoryId
+    else:
+        category_id = get_or_create_default_category(db, user.id)
+    
+    # 创建单词
+    word = Word(
+        user_id=user.id,
+        text=text,
+        category_id=category_id,
+        domain=data.domain,
+        added_at=int(time.time() * 1000),
+    )
+    db.add(word)
+    db.commit()
+    
+    return WordResponse(success=True, added=True, message="添加成功")
 
 
 class CombinedSearchResult(BaseModel):

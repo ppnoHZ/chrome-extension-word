@@ -3,11 +3,16 @@ defineProps<{
   enabled: boolean;
   wordsCount: number;
   collectionsCount: number;
+  isLoggedIn?: boolean;
+  userName?: string;
+  userAvatar?: string;
+  pendingSyncCount?: number;
 }>();
 
 defineEmits<{
   toggle: [];
   openOptions: [];
+  sync: [];
 }>();
 </script>
 
@@ -22,6 +27,22 @@ defineEmits<{
       <button class="toggle-pill" :class="{ 'toggle-pill--on': enabled }" @click="$emit('toggle')">
         {{ enabled ? '已开启' : '已暂停' }}
       </button>
+    </div>
+
+    <!-- 登录状态和同步提示 -->
+    <div v-if="isLoggedIn" class="auth-status auth-status--logged-in">
+      <div class="auth-status__user">
+        <img v-if="userAvatar" :src="userAvatar" class="auth-status__avatar" alt="avatar" />
+        <span v-else class="auth-status__avatar-placeholder">👤</span>
+        <span class="auth-status__name">{{ userName || '已登录' }}</span>
+      </div>
+      <div v-if="pendingSyncCount && pendingSyncCount > 0" class="sync-hint" @click="$emit('openOptions')">
+        <span class="sync-hint__badge">{{ pendingSyncCount }}</span>
+        <span class="sync-hint__text">条待同步</span>
+      </div>
+    </div>
+    <div v-else class="auth-status auth-status--logged-out" @click="$emit('openOptions')">
+      <span class="auth-status__hint">💡 登录后可云同步数据</span>
     </div>
 
     <div class="hero-card__stats">
@@ -134,5 +155,97 @@ defineEmits<{
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
+}
+
+/* Auth status styles */
+.auth-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(15, 23, 42, 0.05);
+}
+
+.auth-status--logged-out {
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.auth-status--logged-out:hover {
+  background: rgba(22, 119, 255, 0.08);
+}
+
+.auth-status__hint {
+  font-size: 12px;
+  color: var(--popup-muted);
+}
+
+.auth-status__user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.auth-status__avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.auth-status__avatar-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #e8f0fe;
+  font-size: 14px;
+}
+
+.auth-status__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--popup-text);
+}
+
+.sync-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #fff7e6 0%, #ffe4b8 100%);
+  border: 1px solid rgba(250, 140, 22, 0.2);
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.sync-hint:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(250, 140, 22, 0.2);
+}
+
+.sync-hint__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #fa8c16;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.sync-hint__text {
+  font-size: 12px;
+  font-weight: 600;
+  color: #d46b08;
 }
 </style>

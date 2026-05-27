@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
 from app.dependencies import get_db
-from app.models import User, Collection, Category, not_deleted
+from app.models import User, Collection, Category, Word, not_deleted
 from app.routers.auth import get_current_user
 from app.schemas.collection import CollectionSchema
 
@@ -28,6 +28,7 @@ class CollectionCreate(BaseModel):
     context: Optional[str] = None
     domain: Optional[str] = None
     categoryId: Optional[str] = Field(default=None, alias="categoryId")
+    addToWords: bool = Field(default=True, alias="addToWords")  # 是否同时添加到单词库
 
     class Config:
         populate_by_name = True
@@ -38,6 +39,7 @@ class CollectionResponse(BaseModel):
     success: bool
     id: Optional[str] = None
     message: Optional[str] = None
+    wordAdded: bool = False  # 单词是否被添加到词库
 
 
 def get_or_create_default_category(db: Session, user_id: str) -> str:
@@ -76,6 +78,7 @@ async def create_collection(
     创建收藏
     
     如果未指定 categoryId，默认收藏到 General 分类下
+    如果 addToWords=True（默认），同时将单词添加到词库
     """
     # 确定分类 ID
     if data.categoryId:
@@ -107,9 +110,39 @@ async def create_collection(
         collected_at=int(time.time() * 1000),
     )
     db.add(collection)
+    
+    # 如果需要同时添加到单词库
+    word_added = False
+    if data.addToWords:
+        # 检查单词是否已存在（不区分大小写）
+        text = data.text.strip()
+        existing_word = not_deleted(
+            db.query(Word).filter(
+                Word.user_id == user.id,
+                Word.text.ilike(text)
+            )
+        ).first()
+        
+        if not existing_word and text:
+            # 创建单词
+            word = Word(
+                user_id=user.id,
+                text=text,
+                category_id=category_id,
+                domain=data.domain,
+                added_at=int(time.time() * 1000),
+            )
+            db.add(word)
+            word_added = True
+    
     db.commit()
     
-    return CollectionResponse(success=True, id=collection_id, message="收藏成功")
+    return CollectionResponse(
+        success=True, 
+        id=collection_id, 
+        message="收藏成功" + ("，单词已添加到词库" if word_added else ""),
+        wordAdded=word_added
+    )
 
 
 @router.get("", response_model=List[CollectionSchema])

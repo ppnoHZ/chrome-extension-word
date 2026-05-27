@@ -37,9 +37,22 @@ async function authFetch(url: string, options: RequestInit = {}): Promise<Respon
 }
 
 /**
- * 验证登录状态
+ * 用户信息类型
  */
-export async function verifyAuth(): Promise<boolean> {
+export interface UserInfo {
+  id: string;
+  name?: string;
+  email?: string;
+  avatar?: string;
+}
+
+/**
+ * 验证登录状态并返回用户信息
+ */
+export async function verifyAuthAndGetUser(): Promise<{
+  valid: boolean;
+  user?: UserInfo;
+}> {
   const [storedApiUrl, authToken] = await Promise.all([
     get('apiUrl'),
     get('authToken'),
@@ -47,7 +60,9 @@ export async function verifyAuth(): Promise<boolean> {
 
   const apiUrl = resolveApiUrl(storedApiUrl);
 
-  if (!apiUrl || !authToken) return false;
+  if (!apiUrl || !authToken) {
+    return { valid: false };
+  }
 
   try {
     const res = await authFetch(`${apiUrl}/api/auth/verify`, {
@@ -56,12 +71,84 @@ export async function verifyAuth(): Promise<boolean> {
     
     if (res.ok) {
       const data = await res.json();
-      return data.success === true;
+      if (data.success === true && data.user) {
+        return { valid: true, user: data.user };
+      }
     }
   } catch (err) {
     console.error('Auth verify failed:', err);
   }
-  return false;
+  return { valid: false };
+}
+
+/**
+ * 验证登录状态
+ */
+export async function verifyAuth(): Promise<boolean> {
+  const result = await verifyAuthAndGetUser();
+  return result.valid;
+}
+
+/**
+ * 获取当前用户信息
+ */
+export async function getCurrentUser(): Promise<UserInfo | null> {
+  const [storedApiUrl, authToken] = await Promise.all([
+    get('apiUrl'),
+    get('authToken'),
+  ]);
+
+  const apiUrl = resolveApiUrl(storedApiUrl);
+
+  if (!apiUrl || !authToken) return null;
+
+  try {
+    const res = await authFetch(`${apiUrl}/api/auth/me`);
+    
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.error('Get current user failed:', err);
+  }
+  return null;
+}
+
+/**
+ * 添加单词到后端词库
+ */
+export async function saveWordToBackend(params: {
+  text: string;
+  categoryId?: string;
+  domain?: string;
+}): Promise<{ success: boolean; added: boolean; message?: string }> {
+  const [storedApiUrl, authToken] = await Promise.all([
+    get('apiUrl'),
+    get('authToken'),
+  ]);
+
+  const apiUrl = resolveApiUrl(storedApiUrl);
+  
+  if (!apiUrl || !authToken) {
+    return { success: false, added: false, message: '未登录或未配置后端' };
+  }
+
+  try {
+    const res = await authFetch(`${apiUrl}/api/words`, {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+
+    if (res.ok) {
+      return await res.json();
+    } else {
+      const error = await res.json().catch(() => ({ detail: '保存失败' }));
+      return { success: false, added: false, message: error.detail || '保存失败' };
+    }
+  } catch (err) {
+    console.error('Failed to save word:', err);
+    return { success: false, added: false, message: String(err) };
+  }
 }
 
 /**

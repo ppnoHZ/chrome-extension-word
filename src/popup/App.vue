@@ -15,6 +15,12 @@ const collections = ref<Collection[]>([]);
 const newWord = ref('');
 const selectedCategory = ref('default');
 
+// 登录状态
+const isLoggedIn = ref(false);
+const userName = ref<string>();
+const userAvatar = ref<string>();
+const pendingSyncCount = ref(0);
+
 onMounted(async () => {
   const all = await getAll();
   enabled.value = all.enabled;
@@ -22,6 +28,17 @@ onMounted(async () => {
   words.value = all.words;
   collections.value = all.collections.slice(0, 5);
   if (categories.value[0]) selectedCategory.value = categories.value[0].id;
+  
+  // 获取登录状态
+  try {
+    const authStatus = await send({ type: 'getAuthStatus' });
+    isLoggedIn.value = authStatus.isLoggedIn;
+    userName.value = authStatus.user?.name;
+    userAvatar.value = authStatus.user?.avatar;
+    pendingSyncCount.value = authStatus.pendingSyncCount;
+  } catch (err) {
+    console.error('[Word Learn] Failed to get auth status:', err);
+  }
 });
 
 const recent = computed(() => collections.value.slice(0, 5));
@@ -57,6 +74,10 @@ function openOptions() {
       :enabled="enabled"
       :words-count="words.length"
       :collections-count="recent.length"
+      :is-logged-in="isLoggedIn"
+      :user-name="userName"
+      :user-avatar="userAvatar"
+      :pending-sync-count="pendingSyncCount"
       @toggle="toggle"
       @open-options="openOptions"
     />

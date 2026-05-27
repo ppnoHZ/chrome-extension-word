@@ -11,7 +11,20 @@ export type Message =
   | { type: 'getHighlightData' }
   | { type: 'wordsUpdated' }
   | { type: 'toggleEnabled'; enabled: boolean }
-  | { type: 'lookupWord'; word: string };
+  | { type: 'lookupWord'; word: string }
+  | { type: 'getAuthStatus' }
+  | { type: 'verifyAuth' };
+
+export interface AuthStatus {
+  isLoggedIn: boolean;
+  user?: {
+    id: string;
+    name?: string;
+    email?: string;
+    avatar?: string;
+  };
+  pendingSyncCount: number;
+}
 
 export interface HighlightData {
   enabled: boolean;
@@ -27,7 +40,11 @@ export type Response<M extends Message> = M extends { type: 'collect' }
       ? HighlightData
       : M extends { type: 'lookupWord' }
         ? { ok: true; entry: DictionaryEntry } | { ok: false; error: string }
-        : { ok: true };
+        : M extends { type: 'getAuthStatus' }
+          ? AuthStatus
+          : M extends { type: 'verifyAuth' }
+            ? { ok: true; valid: boolean; user?: AuthStatus['user'] }
+            : { ok: true };
 
 export function send<M extends Message>(msg: M): Promise<Response<M>> {
   console.log('[Word Learn] Messaging: sending message:', msg.type, msg);

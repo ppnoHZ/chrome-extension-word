@@ -2,7 +2,7 @@ import { onMessage, type HighlightData } from '@/shared/messaging';
 import { get, getAll, set, update } from '@/shared/storage';
 import { DEFAULT_STORAGE, type Collection, type DictCacheEntry, type Word } from '@/shared/types';
 import { queryDictionary } from '@/shared/dictionary';
-import { saveCollectionToBackend, canSyncToBackend } from '@/shared/api';
+import { saveCollectionToBackend, canSyncToBackend, verifyAuthAndGetUser, saveWordToBackend } from '@/shared/api';
 
 // Initialize defaults on install.
 chrome.runtime.onInstalled.addListener(async () => {
@@ -30,7 +30,42 @@ chrome.runtime.onInstalled.addListener(async () => {
     title: chrome.i18n.getMessage('contextMenuLookup') || 'Word Learn: lookup "%s"',
     contexts: ['selection'],
   });
+  
+  // 验证登录状态
+  await verifyAndUpdateAuthState();
 });
+
+// 每次 service worker 启动时验证登录状态
+chrome.runtime.onStartup.addListener(async () => {
+  await verifyAndUpdateAuthState();
+});
+
+/**
+ * 验证并更新登录状态
+ * 如果 token 有效，更新 userInfo
+ * 如果 token 无效，清除登录状态
+ */
+async function verifyAndUpdateAuthState(): Promise<void> {
+  const authToken = await get('authToken');
+  if (!authToken) return;
+  
+  try {
+    const result = await verifyAuthAndGetUser();
+    if (result.valid && result.user) {
+      // Token 有效，更新用户信息
+      await set('userInfo', result.user);
+      console.log('[Word Learn] Auth verified, user:', result.user.name || result.user.id);
+    } else {
+      // Token 无效，清除登录状态
+      console.log('[Word Learn] Auth token invalid, clearing auth state');
+      await set('authToken', '');
+      await set('authProvider', 'none');
+      await set('userInfo', undefined);
+    }
+  } catch (err) {
+    console.error('[Word Learn] Failed to verify auth:', err);
+  }
+}
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   const text = info.selectionText?.trim();
@@ -148,6 +183,37 @@ onMessage(async (msg) => {
       }
       break;
     }
+    case 'getAuthStatus': {
+      console.log('[Word Learn] Processing getAuthStatus request');
+      const all = await getAll();
+      const isLoggedIn = Boolean(all.authToken && all.userInfo);
+      response = {
+        isLoggedIn,
+        user: all.userInfo,
+        pendingSyncCount: all.pendingSyncCollections?.length ?? 0,
+      };
+      break;
+    }
+    case 'verifyAuth': {
+      console.log('[Word Learn] Processing verifyAuth request');
+      try {
+        const result = await verifyAuthAndGetUser();
+        if (result.valid && result.user) {
+          await set('userInfo', result.user);
+          response = { ok: true, valid: true, user: result.user };
+        } else {
+          // Token 无效，清除登录状态
+          await set('authToken', '');
+          await set('authProvider', 'none');
+          await set('userInfo', undefined);
+          response = { ok: true, valid: false };
+        }
+      } catch (err) {
+        console.error('[Word Learn] verifyAuth error:', err);
+        response = { ok: true, valid: false };
+      }
+      break;
+    }
     default:
       console.warn('[Word Learn] Unknown message type:', (msg as { type: string }).type);
       response = { ok: false, error: 'Unknown message type' };
@@ -174,7 +240,7 @@ async function addWord(
   rawText: string,
   categoryId?: string,
   domain?: string,
-): Promise<{ added: boolean; categoryId: string }> {
+): Promise<{ added: boolean; categoryId: string; backendSaved?: boolean }> {
   const text = rawText.trim();
   if (!text) return { added: false, categoryId: categoryId ?? 'default' };
   const all = await getAll();
@@ -187,7 +253,23 @@ async function addWord(
   if (exists) return { added: false, categoryId: targetCat };
   const entry: Word = { text, categoryId: targetCat, domain, addedAt: Date.now() };
   await update('words', (cur) => [entry, ...cur]);
-  return { added: true, categoryId: targetCat };
+  
+  // 如果已登录，同时保存到后端
+  let backendSaved = false;
+  const canSync = await canSyncToBackend();
+  if (canSync) {
+    try {
+      const result = await saveWordToBackend({ text, categoryId: targetCat, domain });
+      backendSaved = result.success && result.added;
+      if (backendSaved) {
+        console.log('[Word Learn] Word saved to backend:', text);
+      }
+    } catch (err) {
+      console.error('[Word Learn] Failed to save word to backend:', err);
+    }
+  }
+  
+  return { added: true, categoryId: targetCat, backendSaved };
 }
 
 async function saveCollection(
